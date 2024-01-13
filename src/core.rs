@@ -436,6 +436,12 @@ impl Core {
         self.load_sld_file(sld_file_path);
         self.decode_all_instructions();
 
+        let guard = pprof::ProfilerGuardBuilder::default()
+            .frequency(1000)
+            .blocklist(&["libc", "libgcc", "pthread", "vdso"])
+            .build()
+            .unwrap();
+
         loop {
             cycle_num += 1;
             if self.get_pc() >= INSTRUCTION_MEMORY_SIZE as Address {
@@ -469,6 +475,11 @@ impl Core {
                 before_output_len = self.output.len();
             }
         }
+
+        if let Ok(report) = guard.report().build() {
+            let file = File::create("flamegraph_256_inline.svg").unwrap();
+            report.flamegraph(file).unwrap();
+        };
 
         println!(
             "executed instruction count: {}\nelapsed time: {:?}\n{:.2} MIPS",
