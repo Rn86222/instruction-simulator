@@ -36,6 +36,11 @@ struct Args {
     /// If this flag is set to 2, the simulator will print the information about pipeline and registers in each cycle, and save history of registers and pc
     #[arg(short, long)]
     verbose: Option<u32>,
+
+    /// No cache mode
+    /// If this flag is set, the simulator won't use cache
+    #[arg(short, long)]
+    no_cache: bool,
 }
 
 fn main() {
@@ -66,9 +71,10 @@ fn main() {
                 panic!("Reading file failed.\nThe size of sum of instructions is not a multiple of 4. {}", inst_count);
             }
             let verbose = args.verbose.unwrap_or(0);
+            let use_cache = !args.no_cache;
             let ppm_file_path = &input.replace(".bin", ".ppm");
             let sld_file_path = &args.sld.unwrap();
-            core.run(verbose, ppm_file_path, sld_file_path);
+            core.run(verbose, use_cache, ppm_file_path, sld_file_path);
         }
     }
 }

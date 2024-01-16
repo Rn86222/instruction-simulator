@@ -4,6 +4,8 @@ use std::ops::*;
 
 use crate::types::Int;
 
+const USE_OUR_FPU: bool = true;
+
 #[derive(Copy, Clone)]
 pub struct FloatingPoint {
     value: u32,
@@ -98,155 +100,173 @@ impl Debug for FloatingPoint {
 impl Add for FloatingPoint {
     type Output = Self;
     fn add(self, other: Self) -> Self {
-        let (s1, e1, m1) = self.get_1_8_23_bits();
-        let (s2, e2, m2) = other.get_1_8_23_bits();
-        let (m1a, e1a) = if e1 == 0 {
-            (to_n_bits_u32(m1, 25), 1)
-        } else {
-            (to_n_bits_u32(m1 | 0x800000, 25), e1)
-        };
-        let (m2a, e2a) = if e2 == 0 {
-            (to_n_bits_u32(m2, 25), 1)
-        } else {
-            (to_n_bits_u32(m2 | 0x800000, 25), e2)
-        };
-        let (ce, tde) = if e1a > e2a {
-            (0_u32, to_n_bits_u32(e1a - e2a, 8))
-        } else {
-            (1_u32, to_n_bits_u32(e2a - e1a, 8))
-        };
-        let de = if tde >> 5 != 0 {
-            31
-        } else {
-            to_n_bits_u32(tde, 5)
-        };
-        let sel = if de == 0 {
-            if m1a > m2a {
-                0
+        if USE_OUR_FPU {
+            let (s1, e1, m1) = self.get_1_8_23_bits();
+            let (s2, e2, m2) = other.get_1_8_23_bits();
+            let (m1a, e1a) = if e1 == 0 {
+                (to_n_bits_u32(m1, 25), 1)
             } else {
-                1
-            }
-        } else {
-            ce
-        };
-        let (ms, mi, es, ss) = if sel == 0 {
-            (m1a, m2a, e1a, s1)
-        } else {
-            (m2a, m1a, e2a, s2)
-        };
-        let mie = to_n_bits_u64((mi as u64) << 31, 56);
-        let mia = to_n_bits_u64(mie >> (de as u64), 56);
-        let tstck: u32 = if to_n_bits_u64(mia, 29) != 0 { 1 } else { 0 };
-        let mye = if s1 == s2 {
-            to_n_bits_u64(((ms as u64) << 2) + (mia >> 29), 27)
-        } else {
-            to_n_bits_u64(((ms as u64) << 2) - (mia >> 29), 27)
-        };
-        let esi = to_n_bits_u32(es + 1, 8);
-        let (eyd, myd, stck) = if mye & (1 << 26) != 0 {
-            if esi == 255 {
-                (255, 1 << 25, 0)
+                (to_n_bits_u32(m1 | 0x800000, 25), e1)
+            };
+            let (m2a, e2a) = if e2 == 0 {
+                (to_n_bits_u32(m2, 25), 1)
             } else {
-                (esi, to_n_bits_u64(mye >> 1, 27), tstck | (mye & 1) as u32)
-            }
-        } else {
-            (es, mye, tstck)
-        };
-        let se = to_n_bits_u64(myd, 26).leading_zeros() - 38;
-        let eyf = eyd as i64 - se as i64;
-        let (myf, eyr) = if eyf > 0 {
-            (to_n_bits_u64(myd << se, 56), (eyf & 0xFF) as u32)
-        } else {
-            (to_n_bits_u64(myd << ((eyd & 31) - 1), 56), 0)
-        };
-        let myr = if myf & 0b10 != 0 && myf & 0b1 != 0
-            || myf & 0b10 != 0 && stck == 0 && myf & 0b100 != 0
-            || myf & 0b10 != 0 && s1 == s2 && stck == 1
-        {
-            to_n_bits_u64(to_n_bits_u64(myf >> 2, 25) + 1, 25)
-        } else {
-            to_n_bits_u64(myf >> 2, 25)
-        };
-        let eyri = to_n_bits_u32(eyr + 1, 8);
-        let (ey, my) = if (myr >> 24) & 1 != 0 {
-            (eyri, 0)
-        } else if to_n_bits_u64(myr, 24) == 0 {
-            (0, 0)
-        } else {
-            (eyr, to_n_bits_u64(myr, 23))
-        };
-        let sy = if ey == 0 && my == 0 { s1 & s2 } else { ss };
-        let nzm1 = if to_n_bits_u32(m1, 23) != 0 { 1 } else { 0 };
-        let nzm2 = if to_n_bits_u32(m2, 23) != 0 { 1 } else { 0 };
-        let y = if e1 == 255 && e2 != 255 {
-            (s1 << 31) + (255 << 23) + (nzm1 << 22) + to_n_bits_u32(m1, 22)
-        } else if e1 != 255 && e2 == 255 {
-            (s2 << 31) + (255 << 23) + (nzm2 << 22) + to_n_bits_u32(m2, 22)
-        } else if e1 == 255 && e2 == 255 && nzm1 == 1 {
-            (s1 << 31) + (255 << 23) + (1 << 22) + to_n_bits_u32(m1, 22)
-        } else if e1 == 255 && e2 == 255 && nzm2 == 1 {
-            (s2 << 31) + (255 << 23) + (1 << 22) + to_n_bits_u32(m2, 22)
-        } else if e1 == 255 && e2 == 255 && s1 == s2 {
-            (s1 << 31) + (255 << 23)
-        } else if e1 == 255 && e2 == 255 {
-            (1 << 31) + (255 << 23) + (1 << 22)
-        } else {
-            (sy << 31) + (ey << 23) + (my as u32)
-        };
+                (to_n_bits_u32(m2 | 0x800000, 25), e2)
+            };
+            let (ce, tde) = if e1a > e2a {
+                (0_u32, to_n_bits_u32(e1a - e2a, 8))
+            } else {
+                (1_u32, to_n_bits_u32(e2a - e1a, 8))
+            };
+            let de = if tde >> 5 != 0 {
+                31
+            } else {
+                to_n_bits_u32(tde, 5)
+            };
+            let sel = if de == 0 {
+                if m1a > m2a {
+                    0
+                } else {
+                    1
+                }
+            } else {
+                ce
+            };
+            let (ms, mi, es, ss) = if sel == 0 {
+                (m1a, m2a, e1a, s1)
+            } else {
+                (m2a, m1a, e2a, s2)
+            };
+            let mie = to_n_bits_u64((mi as u64) << 31, 56);
+            let mia = to_n_bits_u64(mie >> (de as u64), 56);
+            let tstck: u32 = if to_n_bits_u64(mia, 29) != 0 { 1 } else { 0 };
+            let mye = if s1 == s2 {
+                to_n_bits_u64(((ms as u64) << 2) + (mia >> 29), 27)
+            } else {
+                to_n_bits_u64(((ms as u64) << 2) - (mia >> 29), 27)
+            };
+            let esi = to_n_bits_u32(es + 1, 8);
+            let (eyd, myd, stck) = if mye & (1 << 26) != 0 {
+                if esi == 255 {
+                    (255, 1 << 25, 0)
+                } else {
+                    (esi, to_n_bits_u64(mye >> 1, 27), tstck | (mye & 1) as u32)
+                }
+            } else {
+                (es, mye, tstck)
+            };
+            let se = to_n_bits_u64(myd, 26).leading_zeros() - 38;
+            let eyf = eyd as i64 - se as i64;
+            let (myf, eyr) = if eyf > 0 {
+                (to_n_bits_u64(myd << se, 56), (eyf & 0xFF) as u32)
+            } else {
+                (to_n_bits_u64(myd << ((eyd & 31) - 1), 56), 0)
+            };
+            let myr = if myf & 0b10 != 0 && myf & 0b1 != 0
+                || myf & 0b10 != 0 && stck == 0 && myf & 0b100 != 0
+                || myf & 0b10 != 0 && s1 == s2 && stck == 1
+            {
+                to_n_bits_u64(to_n_bits_u64(myf >> 2, 25) + 1, 25)
+            } else {
+                to_n_bits_u64(myf >> 2, 25)
+            };
+            let eyri = to_n_bits_u32(eyr + 1, 8);
+            let (ey, my) = if (myr >> 24) & 1 != 0 {
+                (eyri, 0)
+            } else if to_n_bits_u64(myr, 24) == 0 {
+                (0, 0)
+            } else {
+                (eyr, to_n_bits_u64(myr, 23))
+            };
+            let sy = if ey == 0 && my == 0 { s1 & s2 } else { ss };
+            let nzm1 = if to_n_bits_u32(m1, 23) != 0 { 1 } else { 0 };
+            let nzm2 = if to_n_bits_u32(m2, 23) != 0 { 1 } else { 0 };
+            let y = if e1 == 255 && e2 != 255 {
+                (s1 << 31) + (255 << 23) + (nzm1 << 22) + to_n_bits_u32(m1, 22)
+            } else if e1 != 255 && e2 == 255 {
+                (s2 << 31) + (255 << 23) + (nzm2 << 22) + to_n_bits_u32(m2, 22)
+            } else if e1 == 255 && e2 == 255 && nzm1 == 1 {
+                (s1 << 31) + (255 << 23) + (1 << 22) + to_n_bits_u32(m1, 22)
+            } else if e1 == 255 && e2 == 255 && nzm2 == 1 {
+                (s2 << 31) + (255 << 23) + (1 << 22) + to_n_bits_u32(m2, 22)
+            } else if e1 == 255 && e2 == 255 && s1 == s2 {
+                (s1 << 31) + (255 << 23)
+            } else if e1 == 255 && e2 == 255 {
+                (1 << 31) + (255 << 23) + (1 << 22)
+            } else {
+                (sy << 31) + (ey << 23) + (my as u32)
+            };
 
-        let _ovf = if e1 == 255 && e2 == 255 {
-            0
-        } else if ((mye >> 26) & 1 == 1 && esi == 255) || (myr >> 24) & 1 == 1 && eyri == 255 {
-            1
+            let _ovf = if e1 == 255 && e2 == 255 {
+                0
+            } else if ((mye >> 26) & 1 == 1 && esi == 255) || (myr >> 24) & 1 == 1 && eyri == 255 {
+                1
+            } else {
+                0
+            };
+            FloatingPoint { value: y }
         } else {
-            0
-        };
-        FloatingPoint { value: y }
+            let op1 = self.get_f32_value();
+            let op2 = other.get_f32_value();
+            FloatingPoint::new_f32(op1 + op2)
+        }
     }
 }
 
 impl Sub for FloatingPoint {
     type Output = Self;
     fn sub(self, other: Self) -> Self {
-        let neg_other = FloatingPoint {
-            value: other.value ^ 0x80000000,
-        };
-        self + neg_other
+        if USE_OUR_FPU {
+            let neg_other = FloatingPoint {
+                value: other.value ^ 0x80000000,
+            };
+            self + neg_other
+        } else {
+            let op1 = self.get_f32_value();
+            let op2 = other.get_f32_value();
+            FloatingPoint::new_f32(op1 - op2)
+        }
     }
 }
 
 impl Mul for FloatingPoint {
     type Output = Self;
     fn mul(self, other: Self) -> Self::Output {
-        let (s1, e1, m1) = self.get_1_8_23_bits();
-        let (s2, e2, m2) = other.get_1_8_23_bits();
-        let (h1, h2) = (m1 >> 11, m2 >> 11);
-        let (l1, l2) = (m1 & 0x7ff, m2 & 0x7ff);
-        let h1i = h1 | 0x1000;
-        let h2i = h2 | 0x1000;
-        let h1h2 = (h1i * h2i) as u64;
-        let h1l2 = (h1i * l2) as u64;
-        let l1h2 = (l1 * h2i) as u64;
-        let sy = s1 ^ s2;
-        let eys = e1 + e2 + 129;
-        let m1m2 = h1h2 + (h1l2 >> 11) + (l1h2 >> 11) + 2;
-        let eysi = eys + 1;
-        let ey = if e1 == 0 || e2 == 0 || (eys >> 8) & 1 == 0 {
-            0
-        } else if m1m2 & (1 << 25) != 0 {
-            to_n_bits_u32(eysi, 8)
+        if USE_OUR_FPU {
+            let (s1, e1, m1) = self.get_1_8_23_bits();
+            let (s2, e2, m2) = other.get_1_8_23_bits();
+            let (h1, h2) = (m1 >> 11, m2 >> 11);
+            let (l1, l2) = (m1 & 0x7ff, m2 & 0x7ff);
+            let h1i = h1 | 0x1000;
+            let h2i = h2 | 0x1000;
+            let h1h2 = (h1i * h2i) as u64;
+            let h1l2 = (h1i * l2) as u64;
+            let l1h2 = (l1 * h2i) as u64;
+            let sy = s1 ^ s2;
+            let eys = e1 + e2 + 129;
+            let m1m2 = h1h2 + (h1l2 >> 11) + (l1h2 >> 11) + 2;
+            let eysi = eys + 1;
+            let ey = if e1 == 0 || e2 == 0 || (eys >> 8) & 1 == 0 {
+                0
+            } else if m1m2 & (1 << 25) != 0 {
+                to_n_bits_u32(eysi, 8)
+            } else {
+                to_n_bits_u32(eys, 8)
+            };
+            let my = if ey == 0 {
+                0
+            } else if m1m2 & (1 << 25) != 0 {
+                to_n_bits_u64(m1m2 >> 2, 23)
+            } else {
+                to_n_bits_u64(m1m2 >> 1, 23)
+            };
+            let y = (sy << 31) + (ey << 23) + (my as u32);
+            FloatingPoint { value: y }
         } else {
-            to_n_bits_u32(eys, 8)
-        };
-        let my = if ey == 0 {
-            0
-        } else if m1m2 & (1 << 25) != 0 {
-            to_n_bits_u64(m1m2 >> 2, 23)
-        } else {
-            to_n_bits_u64(m1m2 >> 1, 23)
-        };
-        let y = (sy << 31) + (ey << 23) + (my as u32);
-        FloatingPoint { value: y }
+            let op1 = self.get_f32_value();
+            let op2 = other.get_f32_value();
+            FloatingPoint::new_f32(op1 * op2)
+        }
     }
 }
 
@@ -283,21 +303,27 @@ fn inv(x: FloatingPoint, inv_map: &InvMap) -> FloatingPoint {
 }
 
 pub fn div_fp(this: FloatingPoint, other: FloatingPoint, inv_map: &InvMap) -> FloatingPoint {
-    let (s1, e1, m1) = this.get_1_8_23_bits();
-    let (s2, e2, m2) = other.get_1_8_23_bits();
-    if e1 == 0 {
-        return FloatingPoint { value: 0 };
+    if USE_OUR_FPU {
+        let (s1, e1, m1) = this.get_1_8_23_bits();
+        let (s2, e2, m2) = other.get_1_8_23_bits();
+        if e1 == 0 {
+            return FloatingPoint { value: 0 };
+        }
+        let normailized_this = FloatingPoint::new((127 << 23) + m1);
+        let normilized_other = FloatingPoint::new((127 << 23) + m2);
+        let normalized_other_inv = inv(normilized_other, inv_map);
+        let yi = normailized_this * normalized_other_inv;
+        let (_, ei, my) = yi.get_1_8_23_bits();
+        let eyi = (e1 as i32 - 127) - (e2 as i32 - 127) + (ei as i32 - 127) + 127;
+        let ey = if eyi < 0 { 0 } else { eyi as u32 };
+        let sy = s1 ^ s2;
+        let y = (sy << 31) + (ey << 23) + my;
+        FloatingPoint { value: y }
+    } else {
+        let op1 = this.get_f32_value();
+        let op2 = other.get_f32_value();
+        FloatingPoint::new_f32(op1 / op2)
     }
-    let normailized_this = FloatingPoint::new((127 << 23) + m1);
-    let normilized_other = FloatingPoint::new((127 << 23) + m2);
-    let normalized_other_inv = inv(normilized_other, inv_map);
-    let yi = normailized_this * normalized_other_inv;
-    let (_, ei, my) = yi.get_1_8_23_bits();
-    let eyi = (e1 as i32 - 127) - (e2 as i32 - 127) + (ei as i32 - 127) + 127;
-    let ey = if eyi < 0 { 0 } else { eyi as u32 };
-    let sy = s1 ^ s2;
-    let y = (sy << 31) + (ey << 23) + my;
-    FloatingPoint { value: y }
 }
 
 pub type SqrtMap = Vec<(FloatingPoint, FloatingPoint)>;
@@ -329,114 +355,139 @@ pub fn create_sqrt_map() -> SqrtMap {
 }
 
 pub fn sqrt_fp(this: FloatingPoint, sqrt_map: &SqrtMap) -> FloatingPoint {
-    let (s, e, m) = this.get_1_8_23_bits();
-    if s == 1 {
-        panic!("sqrt of negative number");
-    }
-    if e == 0 {
-        return FloatingPoint { value: 0 };
-    }
-    let (sh, offset_e) = if e < 127 {
-        if (127 - e) % 2 == 0 {
-            (0, 127 - e)
-        } else {
-            (0, 128 - e)
+    if USE_OUR_FPU {
+        let (s, e, m) = this.get_1_8_23_bits();
+        if s == 1 {
+            panic!("sqrt of negative number");
         }
-    } else if e > 128 {
-        if (e - 128) % 2 == 0 {
-            (1, e - 128)
-        } else {
-            (1, e - 127)
+        if e == 0 {
+            return FloatingPoint { value: 0 };
         }
+        let (sh, offset_e) = if e < 127 {
+            if (127 - e) % 2 == 0 {
+                (0, 127 - e)
+            } else {
+                (0, 128 - e)
+            }
+        } else if e > 128 {
+            if (e - 128) % 2 == 0 {
+                (1, e - 128)
+            } else {
+                (1, e - 127)
+            }
+        } else {
+            (0, 0)
+        };
+        let ei = if sh == 0 { e + offset_e } else { e - offset_e };
+        let normalized_x = FloatingPoint::new((ei << 23) + m);
+        let index = (((!ei & 1) << 9) + (m >> 14)) as usize;
+        let (a, b) = sqrt_map[index];
+        let yi = b + a * normalized_x;
+        let (_, eyi, my) = yi.get_1_8_23_bits();
+        let ey = if sh == 0 {
+            eyi - offset_e / 2
+        } else {
+            eyi + offset_e / 2
+        };
+        let y = (ey << 23) + my;
+        FloatingPoint { value: y }
     } else {
-        (0, 0)
-    };
-    let ei = if sh == 0 { e + offset_e } else { e - offset_e };
-    let normalized_x = FloatingPoint::new((ei << 23) + m);
-    let index = (((!ei & 1) << 9) + (m >> 14)) as usize;
-    let (a, b) = sqrt_map[index];
-    let yi = b + a * normalized_x;
-    let (_, eyi, my) = yi.get_1_8_23_bits();
-    let ey = if sh == 0 {
-        eyi - offset_e / 2
-    } else {
-        eyi + offset_e / 2
-    };
-    let y = (ey << 23) + my;
-    FloatingPoint { value: y }
+        let op1 = this.get_f32_value();
+        FloatingPoint::new_f32(op1.sqrt())
+    }
 }
 
 pub fn fp_to_int(this: FloatingPoint) -> Int {
-    let (s, e, m) = this.get_1_8_23_bits();
-    if e == 0 {
-        return 0;
-    }
-    let mi = m | 0x800000;
-    let mis = mi << 7;
-    let (msb, myi) = if e < 126 {
-        (0, 0)
-    } else if e == 126 {
-        (1, 0)
-    } else if e < 127 + 30 {
-        ((mis >> (30 - (e - 127 + 1))) & 1, mis >> (30 - (e - 127)))
-    } else if e == 127 + 30 {
-        (0, mis)
-    } else if s == 1 {
-        (0, 1 << 31)
+    if USE_OUR_FPU {
+        let (s, e, m) = this.get_1_8_23_bits();
+        if e == 0 {
+            return 0;
+        }
+        let mi = m | 0x800000;
+        let mis = mi << 7;
+        let (msb, myi) = if e < 126 {
+            (0, 0)
+        } else if e == 126 {
+            (1, 0)
+        } else if e < 127 + 30 {
+            ((mis >> (30 - (e - 127 + 1))) & 1, mis >> (30 - (e - 127)))
+        } else if e == 127 + 30 {
+            (0, mis)
+        } else if s == 1 {
+            (0, 1 << 31)
+        } else {
+            (0, (1 << 31) - 1)
+        };
+        let my = myi + msb;
+        if s == 0 || e >= 127 + 31 {
+            my as Int
+        } else if my == 0 {
+            0
+        } else {
+            !(my as Int) + 1
+        }
     } else {
-        (0, (1 << 31) - 1)
-    };
-    let my = myi + msb;
-    if s == 0 || e >= 127 + 31 {
-        my as Int
-    } else if my == 0 {
-        0
-    } else {
-        !(my as Int) + 1
+        let op1 = this.get_f32_value();
+        op1 as Int
     }
 }
 
 pub fn int_to_fp(x: Int) -> FloatingPoint {
-    if x == std::i32::MIN {
-        return FloatingPoint { value: 0xcf000000 };
-    }
-    if x == 0 {
-        return FloatingPoint { value: 0 };
-    }
-    let ux = if x < 0 { !(x - 1) as u32 } else { x as u32 };
-    let se = ux.leading_zeros();
-    let mye = if se == 31 {
-        0
+    if USE_OUR_FPU {
+        if x == std::i32::MIN {
+            return FloatingPoint { value: 0xcf000000 };
+        }
+        if x == 0 {
+            return FloatingPoint { value: 0 };
+        }
+        let ux = if x < 0 { !(x - 1) as u32 } else { x as u32 };
+        let se = ux.leading_zeros();
+        let mye = if se == 31 {
+            0
+        } else {
+            (ux & !(1 << (31 - se))) << (se + 1)
+        };
+        let myi = mye >> 9;
+        let myi2 = if mye & (1 << 8) != 0 { myi + 1 } else { myi };
+        let my = to_n_bits_u32(myi2, 23);
+        let ey = if myi.count_ones() == 23 && mye & (1 << 8) != 0 {
+            127 + 31 - se + 1
+        } else {
+            127 + 31 - se
+        };
+        let sy = if x < 0 { 1 } else { 0 };
+        let y = (sy << 31) + (ey << 23) + my;
+        FloatingPoint { value: y }
     } else {
-        (ux & !(1 << (31 - se))) << (se + 1)
-    };
-    let myi = mye >> 9;
-    let myi2 = if mye & (1 << 8) != 0 { myi + 1 } else { myi };
-    let my = to_n_bits_u32(myi2, 23);
-    let ey = if myi.count_ones() == 23 && mye & (1 << 8) != 0 {
-        127 + 31 - se + 1
-    } else {
-        127 + 31 - se
-    };
-    let sy = if x < 0 { 1 } else { 0 };
-    let y = (sy << 31) + (ey << 23) + my;
-    FloatingPoint { value: y }
+        FloatingPoint::new_f32(x as f32)
+    }
 }
 
 impl Neg for FloatingPoint {
     type Output = Self;
     fn neg(self) -> Self {
-        let mut result = self.value;
-        result ^= 0x80000000;
-        FloatingPoint { value: result }
+        if USE_OUR_FPU {
+            let mut result = self.value;
+            result ^= 0x80000000;
+            FloatingPoint { value: result }
+        } else {
+            let op1 = self.get_f32_value();
+            FloatingPoint::new_f32(-op1)
+        }
     }
 }
 
 impl PartialEq for FloatingPoint {
     fn eq(&self, other: &Self) -> bool {
-        let (s1, e1, m1) = self.get_1_8_23_bits();
-        let (s2, e2, m2) = other.get_1_8_23_bits();
-        (e1 == 0 && e2 == 0) || (s1 == s2 && e1 == e2 && m1 == m2)
+        if USE_OUR_FPU {
+            let (s1, e1, m1) = self.get_1_8_23_bits();
+            let (s2, e2, m2) = other.get_1_8_23_bits();
+            (e1 == 0 && e2 == 0) || (s1 == s2 && e1 == e2 && m1 == m2)
+        } else {
+            let op1 = self.get_f32_value();
+            let op2 = other.get_f32_value();
+            op1 == op2
+        }
     }
 }
 
@@ -450,40 +501,46 @@ impl Eq for FloatingPoint {}
 
 impl Ord for FloatingPoint {
     fn cmp(&self, other: &Self) -> Ordering {
-        let (s1, e1, m1) = self.get_1_8_23_bits();
-        let (s2, e2, m2) = other.get_1_8_23_bits();
-        if e1 == 0 && e2 == 0 {
-            return Ordering::Equal;
-        }
-        if s1 != s2 {
-            if s1 == 1 {
-                return Ordering::Less;
-            } else {
-                return Ordering::Greater;
+        if USE_OUR_FPU {
+            let (s1, e1, m1) = self.get_1_8_23_bits();
+            let (s2, e2, m2) = other.get_1_8_23_bits();
+            if e1 == 0 && e2 == 0 {
+                return Ordering::Equal;
             }
-        }
-        if s1 == 0 {
-            if e1 > e2 {
-                Ordering::Greater
+            if s1 != s2 {
+                if s1 == 1 {
+                    return Ordering::Less;
+                } else {
+                    return Ordering::Greater;
+                }
+            }
+            if s1 == 0 {
+                if e1 > e2 {
+                    Ordering::Greater
+                } else if e1 < e2 {
+                    Ordering::Less
+                } else if m1 > m2 {
+                    Ordering::Greater
+                } else if m1 < m2 {
+                    Ordering::Less
+                } else {
+                    Ordering::Equal
+                }
+            } else if e1 > e2 {
+                Ordering::Less
             } else if e1 < e2 {
-                Ordering::Less
-            } else if m1 > m2 {
                 Ordering::Greater
-            } else if m1 < m2 {
+            } else if m1 > m2 {
                 Ordering::Less
+            } else if m1 < m2 {
+                Ordering::Greater
             } else {
                 Ordering::Equal
             }
-        } else if e1 > e2 {
-            Ordering::Less
-        } else if e1 < e2 {
-            Ordering::Greater
-        } else if m1 > m2 {
-            Ordering::Less
-        } else if m1 < m2 {
-            Ordering::Greater
         } else {
-            Ordering::Equal
+            let op1 = self.get_f32_value();
+            let op2 = other.get_f32_value();
+            op1.partial_cmp(&op2).unwrap()
         }
     }
 }

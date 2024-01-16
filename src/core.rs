@@ -29,13 +29,14 @@ pub struct Core {
     float_registers: [FloatRegister; FLOAT_REGISTER_SIZE],
     pc: Address,
     _pc_stats: HashMap<Address, (Instruction, usize)>,
-    _inst_stats: HashMap<String, usize>,
+    inst_stats: HashMap<String, usize>,
     inv_map: InvMap,
     sqrt_map: SqrtMap,
     sld_vec: Vec<String>,
     sld_counter: usize,
     output: Vec<u8>,
     decoded_instructions: Vec<Instruction>,
+    use_cache: bool,
 }
 
 impl Core {
@@ -50,13 +51,14 @@ impl Core {
         let float_registers = [FloatRegister::new(); FLOAT_REGISTER_SIZE];
         let pc = 0;
         let _pc_stats = HashMap::new();
-        let _inst_stats = HashMap::new();
+        let inst_stats = HashMap::new();
         let inv_map = create_inv_map();
         let sqrt_map = create_sqrt_map();
         let sld_vec = vec![];
         let sld_counter = 0;
         let output = vec![];
         let decoded_instructions = vec![];
+        let use_cache = true;
         Core {
             memory,
             cache,
@@ -68,13 +70,14 @@ impl Core {
             float_registers,
             pc,
             _pc_stats,
-            _inst_stats,
+            inst_stats,
             inv_map,
             sqrt_map,
             sld_vec,
             sld_counter,
             output,
             decoded_instructions,
+            use_cache,
         }
     }
 
@@ -250,21 +253,25 @@ impl Core {
             self.sld_counter += 1;
             return value;
         }
-        self.increment_memory_access_count();
-        let cache_access = self.cache.get_word(addr);
-        match cache_access {
-            CacheAccess::HitWord(value) => {
-                self.increment_cache_hit_count();
-                value
+        if self.use_cache {
+            let cache_access = self.cache.get_word(addr);
+            match cache_access {
+                CacheAccess::HitWord(value) => {
+                    self.increment_cache_hit_count();
+                    value
+                }
+                CacheAccess::Miss => {
+                    let value = self.memory.load_word(addr);
+                    self.process_cache_miss(addr);
+                    value
+                }
+                _ => {
+                    panic!("invalid cache access");
+                }
             }
-            CacheAccess::Miss => {
-                let value = self.memory.load_word(addr);
-                self.process_cache_miss(addr);
-                value
-            }
-            _ => {
-                panic!("invalid cache access");
-            }
+        } else {
+            self.increment_memory_access_count();
+            self.memory.load_word(addr)
         }
     }
 
@@ -302,19 +309,23 @@ impl Core {
             self.output.push(value as u8);
             return;
         }
-        self.increment_memory_access_count();
-        let cache_access = self.cache.set_word(addr, value);
-        match cache_access {
-            CacheAccess::HitSet => {
-                self.increment_cache_hit_count();
+        if self.use_cache {
+            let cache_access = self.cache.set_word(addr, value);
+            match cache_access {
+                CacheAccess::HitSet => {
+                    self.increment_cache_hit_count();
+                }
+                CacheAccess::Miss => {
+                    self.memory.store_word(addr, value);
+                    self.process_cache_miss(addr);
+                }
+                _ => {
+                    panic!("invalid cache access");
+                }
             }
-            CacheAccess::Miss => {
-                self.memory.store_word(addr, value);
-                self.process_cache_miss(addr);
-            }
-            _ => {
-                panic!("invalid cache access");
-            }
+        } else {
+            self.memory.store_word(addr, value);
+            self.increment_memory_access_count();
         }
     }
 
@@ -369,27 +380,25 @@ impl Core {
     //     }
     // }
 
-    // fn update_inst_stats(&mut self) {
-    //     if let Some(inst) = self.get_instruction_in_exec_stage() {
-    //         self.inst_stats
-    //             .entry(get_name(inst))
-    //             .and_modify(|e| *e += 1)
-    //             .or_insert(1);
-    //     }
-    // }
+    pub fn update_inst_stats(&mut self, inst_name: &str) {
+        self.inst_stats
+            .entry(inst_name.to_string())
+            .and_modify(|e| *e += 1)
+            .or_insert(1);
+    }
 
-    // fn show_inst_stats(&self) {
-    //     println!("---------- inst stats ----------");
-    //     let mut inst_stats = vec![];
-    //     for (inst_name, inst_count) in &self.inst_stats {
-    //         inst_stats.push((inst_name, inst_count));
-    //     }
-    //     inst_stats.sort_by(|a, b| b.1.cmp(a.1));
-    //     for inst_stat in &inst_stats {
-    //         print_filled_with_space(&inst_stat.0.to_string(), 8);
-    //         println!(" {}", inst_stat.1);
-    //     }
-    // }
+    fn show_inst_stats(&self) {
+        println!("---------- inst stats ----------");
+        let mut inst_stats = vec![];
+        for (inst_name, inst_count) in &self.inst_stats {
+            inst_stats.push((inst_name, inst_count));
+        }
+        inst_stats.sort_by(|a, b| b.1.cmp(a.1));
+        for inst_stat in &inst_stats {
+            print_filled_with_space(&inst_stat.0.to_string(), 8);
+            println!(" {}", inst_stat.1);
+        }
+    }
 
     fn show_memory_stats(&self) {
         println!("memory access count: {}", self.memory_access_count);
@@ -426,7 +435,13 @@ impl Core {
         }
     }
 
-    pub fn run(&mut self, _verbose: u32, ppm_file_path: &str, sld_file_path: &str) {
+    pub fn run(
+        &mut self,
+        _verbose: u32,
+        use_cache: bool,
+        ppm_file_path: &str,
+        sld_file_path: &str,
+    ) {
         let start_time = Instant::now();
         let mut cycle_num: u128 = 0;
 
@@ -441,6 +456,8 @@ impl Core {
             .blocklist(&["libc", "libgcc", "pthread", "vdso"])
             .build()
             .unwrap();
+
+        self.use_cache = use_cache;
 
         loop {
             cycle_num += 1;
@@ -489,7 +506,7 @@ impl Core {
         );
         self.show_memory_stats();
         self.show_output_result();
-        // self.show_inst_stats();
+        self.show_inst_stats();
         // self.show_pc_stats();
     }
 }
