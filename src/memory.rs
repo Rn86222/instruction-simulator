@@ -53,7 +53,6 @@ impl Memory {
 
     pub fn load_word(&self, addr: Address) -> Word {
         let mut load_value: u32 = 0;
-
         for i in 0..4 {
             load_value += (self.load_ubyte(addr + i) as u32) << (8 * i);
         }

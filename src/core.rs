@@ -37,6 +37,7 @@ pub struct Core {
     output: Vec<u8>,
     decoded_instructions: Vec<Instruction>,
     use_cache: bool,
+    take_inst_stats: bool,
 }
 
 impl Core {
@@ -59,6 +60,7 @@ impl Core {
         let output = vec![];
         let decoded_instructions = vec![];
         let use_cache = true;
+        let take_inst_stats = false;
         Core {
             memory,
             cache,
@@ -78,6 +80,7 @@ impl Core {
             output,
             decoded_instructions,
             use_cache,
+            take_inst_stats,
         }
     }
 
@@ -253,6 +256,7 @@ impl Core {
             self.sld_counter += 1;
             return value;
         }
+        self.increment_memory_access_count();
         if self.use_cache {
             let cache_access = self.cache.get_word(addr);
             match cache_access {
@@ -270,7 +274,6 @@ impl Core {
                 }
             }
         } else {
-            self.increment_memory_access_count();
             self.memory.load_word(addr)
         }
     }
@@ -309,6 +312,7 @@ impl Core {
             self.output.push(value as u8);
             return;
         }
+        self.increment_memory_access_count();
         if self.use_cache {
             let cache_access = self.cache.set_word(addr, value);
             match cache_access {
@@ -325,7 +329,6 @@ impl Core {
             }
         } else {
             self.memory.store_word(addr, value);
-            self.increment_memory_access_count();
         }
     }
 
@@ -381,10 +384,12 @@ impl Core {
     // }
 
     pub fn update_inst_stats(&mut self, inst_name: &str) {
-        self.inst_stats
-            .entry(inst_name.to_string())
-            .and_modify(|e| *e += 1)
-            .or_insert(1);
+        if self.take_inst_stats {
+            self.inst_stats
+                .entry(inst_name.to_string())
+                .and_modify(|e| *e += 1)
+                .or_insert(1);
+        }
     }
 
     fn show_inst_stats(&self) {
