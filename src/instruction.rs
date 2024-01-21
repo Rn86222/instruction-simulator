@@ -4,6 +4,17 @@ use crate::fpu_emulator::*;
 use crate::types::*;
 use crate::utils::*;
 
+const FADD_STALL: usize = 2;
+const FSUB_STALL: usize = 2;
+const FMUL_STALL: usize = 2;
+const FDIV_STALL: usize = 10;
+const FSQRT_STALL: usize = 7;
+const FLT_STALL: usize = 0;
+const FEQ_STALL: usize = 0;
+const FLE_STALL: usize = 0;
+const FCVTSW_STALL: usize = 1;
+const FCVTWS_STALL: usize = 1;
+
 pub fn sign_extention_i16(value: i16, before_bit: usize) -> i16 {
     if (value >> (before_bit - 1)) & 1 == 0 {
         value
@@ -28,28 +39,24 @@ pub fn sign_extention_i32(value: i32, before_bit: usize) -> i32 {
     }
 }
 
-pub fn exec_instruction(inst: Instruction, core: &mut Core) {
+pub fn exec_instruction(inst: Instruction, core: &mut Core) -> &str {
     match inst {
         Instruction::I(imm, rs1, funct3, rd, op) => {
-            exec_i_instruction(imm, rs1, funct3, rd, op, core);
+            exec_i_instruction(imm, rs1, funct3, rd, op, core)
         }
         Instruction::R(funct7, rs2, rs1, funct3, rd, op) => {
-            exec_r_instruction(funct7, rs2, rs1, funct3, rd, op, core);
+            exec_r_instruction(funct7, rs2, rs1, funct3, rd, op, core)
         }
         Instruction::S(imm, rs2, rs1, funct3, op) => {
-            exec_s_instruction(imm, rs2, rs1, funct3, op, core);
+            exec_s_instruction(imm, rs2, rs1, funct3, op, core)
         }
         Instruction::B(imm, rs2, rs1, funct3, op) => {
-            create_b_instruction_struct(imm, rs2, rs1, funct3, op, core);
+            exec_b_instruction(imm, rs2, rs1, funct3, op, core)
         }
-        Instruction::J(imm, rd, op) => {
-            exec_j_instruction(imm, rd, op, core);
-        }
-        Instruction::U(imm, rd, op) => {
-            exec_u_instruction(imm, rd, op, core);
-        }
+        Instruction::J(imm, rd, op) => exec_j_instruction(imm, rd, op, core),
+        Instruction::U(imm, rd, op) => exec_u_instruction(imm, rd, op, core),
         Instruction::R4(fs3, funct2, fs2, fs1, funct3, rd, op) => {
-            exec_r4_instruction(fs3, funct2, fs2, fs1, funct3, rd, op, core);
+            exec_r4_instruction(fs3, funct2, fs2, fs1, funct3, rd, op, core)
         }
         Instruction::Other => {
             panic!("unexpected instruction: {:?}", inst);
@@ -57,7 +64,14 @@ pub fn exec_instruction(inst: Instruction, core: &mut Core) {
     }
 }
 
-pub fn exec_i_instruction(imm: Imm12, rs1: Rs1, funct3: Funct3, rd: Rd, op: Op, core: &mut Core) {
+pub fn exec_i_instruction(
+    imm: Imm12,
+    rs1: Rs1,
+    funct3: Funct3,
+    rd: Rd,
+    op: Op,
+    core: &mut Core,
+) -> &str {
     match op {
         3 => match funct3 {
             0b010 => {
@@ -67,7 +81,8 @@ pub fn exec_i_instruction(imm: Imm12, rs1: Rs1, funct3: Funct3, rd: Rd, op: Op, 
                 let value = core.load_word(addr) as Int;
                 core.set_int_register(rd as usize, value);
                 core.increment_pc();
-                core.update_inst_stats("lw");
+                core.set_load_dest(rd as usize);
+                "lw"
             }
             _ => {
                 panic!("unexpected funct3: {}", funct3);
@@ -80,7 +95,7 @@ pub fn exec_i_instruction(imm: Imm12, rs1: Rs1, funct3: Funct3, rd: Rd, op: Op, 
                 let value = core.get_int_register(rs1 as usize) + extended_imm;
                 core.set_int_register(rd as usize, value);
                 core.increment_pc();
-                core.update_inst_stats("addi");
+                "addi"
             }
             0b001 => {
                 // slli
@@ -88,7 +103,7 @@ pub fn exec_i_instruction(imm: Imm12, rs1: Rs1, funct3: Funct3, rd: Rd, op: Op, 
                 let value = core.get_int_register(rs1 as usize) << uimm;
                 core.set_int_register(rd as usize, value);
                 core.increment_pc();
-                core.update_inst_stats("slli");
+                "slli"
             }
             0b101 => {
                 let funct7 = (imm >> 5) & 0b1111111;
@@ -99,7 +114,7 @@ pub fn exec_i_instruction(imm: Imm12, rs1: Rs1, funct3: Funct3, rd: Rd, op: Op, 
                         let value = core.get_int_register(rs1 as usize) >> uimm;
                         core.set_int_register(rd as usize, value);
                         core.increment_pc();
-                        core.update_inst_stats("srai");
+                        "srai"
                     }
                     _ => {
                         panic!("unexpected funct7: {}", funct7);
@@ -118,7 +133,7 @@ pub fn exec_i_instruction(imm: Imm12, rs1: Rs1, funct3: Funct3, rd: Rd, op: Op, 
                     (core.get_int_register(rs1 as usize) + (extended_imm << 1)) as Address;
                 core.set_int_register(rd as usize, core.get_pc() as Int + 4);
                 core.set_pc(jump_address);
-                core.update_inst_stats("jalr");
+                "jalr"
             }
             _ => {
                 panic!("unexpected funct3: {}", funct3);
@@ -132,7 +147,8 @@ pub fn exec_i_instruction(imm: Imm12, rs1: Rs1, funct3: Funct3, rd: Rd, op: Op, 
                 let value = FloatingPoint::new(i32_to_u32(core.load_word_fp(addr)));
                 core.set_float_register(rd as usize, value);
                 core.increment_pc();
-                core.update_inst_stats("flw");
+                core.set_load_dest(rd as usize + 32);
+                "flw"
             }
             _ => {
                 panic!("unexpected funct3: {}", funct3)
@@ -142,6 +158,7 @@ pub fn exec_i_instruction(imm: Imm12, rs1: Rs1, funct3: Funct3, rd: Rd, op: Op, 
             0b000 => {
                 // end
                 core.end();
+                "end"
             }
             _ => {
                 panic!("unexpected funct3: {}", funct3)
@@ -161,7 +178,7 @@ fn exec_r_instruction(
     rd: Rd,
     op: Op,
     core: &mut Core,
-) {
+) -> &str {
     match op {
         51 => match funct3 {
             0b000 => match funct7 {
@@ -171,7 +188,7 @@ fn exec_r_instruction(
                         core.get_int_register(rs1 as usize) + core.get_int_register(rs2 as usize);
                     core.set_int_register(rd as usize, value);
                     core.increment_pc();
-                    core.update_inst_stats("add");
+                    "add"
                 }
                 0b0100000 => {
                     // sub
@@ -179,7 +196,7 @@ fn exec_r_instruction(
                         core.get_int_register(rs1 as usize) - core.get_int_register(rs2 as usize);
                     core.set_int_register(rd as usize, value);
                     core.increment_pc();
-                    core.update_inst_stats("sub");
+                    "sub"
                 }
                 _ => {
                     panic!("unexpected funct7: {}", funct7);
@@ -196,7 +213,8 @@ fn exec_r_instruction(
                     core.get_float_register(rs1 as usize) + core.get_float_register(rs2 as usize);
                 core.set_float_register(rd as usize, value);
                 core.increment_pc();
-                core.update_inst_stats("fadd");
+                core.increment_fpu_stall_counter(FADD_STALL);
+                "fadd"
             }
             0b0000100 => {
                 // fsub
@@ -204,7 +222,8 @@ fn exec_r_instruction(
                     core.get_float_register(rs1 as usize) - core.get_float_register(rs2 as usize);
                 core.set_float_register(rd as usize, value);
                 core.increment_pc();
-                core.update_inst_stats("fsub");
+                core.increment_fpu_stall_counter(FSUB_STALL);
+                "fsub"
             }
             0b0001000 => {
                 // fmul
@@ -212,7 +231,8 @@ fn exec_r_instruction(
                     core.get_float_register(rs1 as usize) * core.get_float_register(rs2 as usize);
                 core.set_float_register(rd as usize, value);
                 core.increment_pc();
-                core.update_inst_stats("fmul");
+                core.increment_fpu_stall_counter(FMUL_STALL);
+                "fmul"
             }
             0b0001100 => {
                 // fdiv
@@ -223,14 +243,16 @@ fn exec_r_instruction(
                 );
                 core.set_float_register(rd as usize, value);
                 core.increment_pc();
-                core.update_inst_stats("fdiv");
+                core.increment_fpu_stall_counter(FDIV_STALL);
+                "fdiv"
             }
             0b0101100 => {
                 // fsqrt
                 let value = sqrt_fp(core.get_float_register(rs1 as usize), core.get_sqrt_map());
                 core.set_float_register(rd as usize, value);
                 core.increment_pc();
-                core.update_inst_stats("fsqrt");
+                core.increment_fpu_stall_counter(FSQRT_STALL);
+                "fsqrt"
             }
             0b0010000 => match funct3 {
                 0b000 => {
@@ -241,7 +263,7 @@ fn exec_r_instruction(
                     );
                     core.set_float_register(rd as usize, value);
                     core.increment_pc();
-                    core.update_inst_stats("fsgnj");
+                    "fsgnj"
                 }
                 0b001 => {
                     // fsgnjn
@@ -251,7 +273,7 @@ fn exec_r_instruction(
                     );
                     core.set_float_register(rd as usize, value);
                     core.increment_pc();
-                    core.update_inst_stats("fsgnjn");
+                    "fsgnjn"
                 }
                 _ => {
                     panic!("unexpected funct3: {}", funct3)
@@ -272,7 +294,8 @@ fn exec_r_instruction(
                     };
                     core.set_int_register(rd as usize, value);
                     core.increment_pc();
-                    core.update_inst_stats("feq");
+                    core.increment_fpu_stall_counter(FEQ_STALL);
+                    "feq"
                 }
                 0b001 => {
                     // flt
@@ -285,7 +308,8 @@ fn exec_r_instruction(
                     };
                     core.set_int_register(rd as usize, value);
                     core.increment_pc();
-                    core.update_inst_stats("flt");
+                    core.increment_fpu_stall_counter(FLT_STALL);
+                    "flt"
                 }
                 0b000 => {
                     // fle
@@ -298,7 +322,8 @@ fn exec_r_instruction(
                     };
                     core.set_int_register(rd as usize, value);
                     core.increment_pc();
-                    core.update_inst_stats("fle");
+                    core.increment_fpu_stall_counter(FLE_STALL);
+                    "fle"
                 }
                 _ => {
                     panic!("unexpected funct3: {}", funct3)
@@ -309,14 +334,16 @@ fn exec_r_instruction(
                 let value = fp_to_int(core.get_float_register(rs1 as usize));
                 core.set_int_register(rd as usize, value);
                 core.increment_pc();
-                core.update_inst_stats("fcvt.w.s");
+                core.increment_fpu_stall_counter(FCVTWS_STALL);
+                "fcvt.w.s"
             }
             0b1101000 => {
                 // fcvt.s.w
                 let value = int_to_fp(core.get_int_register(rs1 as usize));
                 core.set_float_register(rd as usize, value);
                 core.increment_pc();
-                core.update_inst_stats("fcvt.s.w");
+                core.increment_fpu_stall_counter(FCVTSW_STALL);
+                "fcvt.s.w"
             }
             _ => {
                 panic!("unexpected funct7: {}", funct7)
@@ -328,16 +355,24 @@ fn exec_r_instruction(
     }
 }
 
-fn exec_s_instruction(imm: Imm12, rs2: Rs2, rs1: Rs1, funct3: Funct3, op: Op, core: &mut Core) {
+fn exec_s_instruction(
+    imm: Imm12,
+    rs2: Rs2,
+    rs1: Rs1,
+    funct3: Funct3,
+    op: Op,
+    core: &mut Core,
+) -> &str {
     match op {
         35 => match funct3 {
             // sw
             0b010 => {
                 let extended_imm = sign_extention_i16(imm, 12) as i32;
                 let addr = (core.get_int_register(rs1 as usize) + extended_imm) as Address;
-                core.store_word(addr, core.get_int_register(rs2 as usize) as Word);
+                let rs2_value = core.get_int_register(rs2 as usize);
+                core.store_word(addr, rs2_value as Word);
                 core.increment_pc();
-                core.update_inst_stats("sw");
+                "sw"
             }
             _ => {
                 panic!("unexpected funct3: {}", funct3);
@@ -348,12 +383,10 @@ fn exec_s_instruction(imm: Imm12, rs2: Rs2, rs1: Rs1, funct3: Funct3, op: Op, co
                 // fsw
                 let extended_imm = sign_extention_i16(imm, 12) as i32;
                 let addr = (core.get_int_register(rs1 as usize) + extended_imm) as Address;
-                core.store_word(
-                    addr,
-                    u32_to_i32(core.get_float_register(rs2 as usize).get_32_bits()),
-                );
+                let rs2_value = core.get_float_register(rs2 as usize);
+                core.store_word(addr, u32_to_i32(rs2_value.get_32_bits()));
                 core.increment_pc();
-                core.update_inst_stats("fsw");
+                "fsw"
             }
             _ => {
                 panic!("unexpected funct3: {}", funct3)
@@ -365,14 +398,14 @@ fn exec_s_instruction(imm: Imm12, rs2: Rs2, rs1: Rs1, funct3: Funct3, op: Op, co
     }
 }
 
-fn create_b_instruction_struct(
+fn exec_b_instruction(
     imm: Imm12,
     rs2: Rs2,
     rs1: Rs1,
     funct3: Funct3,
     op: Op,
     core: &mut Core,
-) {
+) -> &str {
     match op {
         99 => match funct3 {
             0b000 => {
@@ -383,7 +416,8 @@ fn create_b_instruction_struct(
                 } else {
                     core.increment_pc();
                 }
-                core.update_inst_stats("beq");
+                core.increment_flush_counter();
+                "beq"
             }
             0b001 => {
                 // bne
@@ -393,7 +427,8 @@ fn create_b_instruction_struct(
                 } else {
                     core.increment_pc();
                 }
-                core.update_inst_stats("bne");
+                core.increment_flush_counter();
+                "bne"
             }
             0b100 => {
                 // blt
@@ -403,7 +438,8 @@ fn create_b_instruction_struct(
                 } else {
                     core.increment_pc();
                 }
-                core.update_inst_stats("blt");
+                core.increment_flush_counter();
+                "blt"
             }
             0b101 => {
                 // bge
@@ -413,7 +449,8 @@ fn create_b_instruction_struct(
                 } else {
                     core.increment_pc();
                 }
-                core.update_inst_stats("bge");
+                core.increment_flush_counter();
+                "bge"
             }
             _ => {
                 panic!("unexpected funct3: {}", funct3);
@@ -425,7 +462,7 @@ fn create_b_instruction_struct(
     }
 }
 
-fn exec_j_instruction(imm: Imm20, rd: Rd, op: Op, core: &mut Core) {
+fn exec_j_instruction(imm: Imm20, rd: Rd, op: Op, core: &mut Core) -> &str {
     match op {
         111 => {
             // jal
@@ -433,7 +470,8 @@ fn exec_j_instruction(imm: Imm20, rd: Rd, op: Op, core: &mut Core) {
             let jump_address = (core.get_pc() as i32 + (extended_imm << 1)) as Address;
             core.set_int_register(rd as usize, core.get_pc() as Int + 4);
             core.set_pc(jump_address);
-            core.update_inst_stats("jal");
+            core.increment_flush_counter();
+            "jal"
         }
         _ => {
             panic!("unexpected op: {}", op);
@@ -441,14 +479,14 @@ fn exec_j_instruction(imm: Imm20, rd: Rd, op: Op, core: &mut Core) {
     }
 }
 
-fn exec_u_instruction(imm: Imm20, rd: Rd, op: Op, core: &mut Core) {
+fn exec_u_instruction(imm: Imm20, rd: Rd, op: Op, core: &mut Core) -> &str {
     match op {
         55 => {
             let upimm = imm << 12;
             let value = upimm;
             core.set_int_register(rd as usize, value);
             core.increment_pc();
-            core.update_inst_stats("lui");
+            "lui"
         }
         _ => {
             panic!("unexpected op: {}", op);
@@ -466,6 +504,6 @@ fn exec_r4_instruction(
     _rd: Rd,
     op: Op,
     _core: &mut Core,
-) {
+) -> &str {
     panic!("unexpected op: {}", op);
 }

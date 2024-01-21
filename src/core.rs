@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
 use std::time::Instant;
+use std::vec;
 
 use crate::cache::*;
 use crate::decoder::*;
@@ -18,11 +19,17 @@ const INT_REGISTER_SIZE: usize = 32;
 const FLOAT_REGISTER_SIZE: usize = 32;
 const IO_ADDRESS: Address = 2147483648;
 
+const CACHE_MISS_STALL: usize = 108 * 120;
+const JUMP_STALL: usize = 3;
+const FREQUENCY: usize = 120 * 1000000;
+const BAUD_RATE: usize = 115200;
+
 pub struct Core {
     memory: Memory,
     cache: Cache,
     memory_access_count: usize,
     cache_hit_count: usize,
+    load_cache_miss_count: usize,
     instruction_memory: InstructionMemory,
     instruction_count: InstructionCount,
     int_registers: [IntRegister; INT_REGISTER_SIZE],
@@ -30,6 +37,8 @@ pub struct Core {
     pc: Address,
     _pc_stats: HashMap<Address, (Instruction, usize)>,
     inst_stats: HashMap<String, usize>,
+    int_registers_access_counter: Vec<usize>,
+    float_registers_access_counter: Vec<usize>,
     inv_map: InvMap,
     sqrt_map: SqrtMap,
     sld_vec: Vec<String>,
@@ -38,6 +47,11 @@ pub struct Core {
     decoded_instructions: Vec<Instruction>,
     use_cache: bool,
     take_inst_stats: bool,
+    load_stall_counter: usize,
+    load_dest: Option<usize>,
+    before_load_dest: Option<usize>,
+    fpu_stall_counter: usize,
+    flush_counter: usize,
 }
 
 impl Core {
@@ -46,6 +60,7 @@ impl Core {
         let cache = Cache::new();
         let memory_access_count = 0;
         let cache_hit_count = 0;
+        let load_cache_miss_count = 0;
         let instruction_memory = InstructionMemory::new();
         let instruction_count = 0;
         let int_registers = [IntRegister::new(); INT_REGISTER_SIZE];
@@ -53,6 +68,8 @@ impl Core {
         let pc = 0;
         let _pc_stats = HashMap::new();
         let inst_stats = HashMap::new();
+        let int_registers_access_counter = vec![0; INT_REGISTER_SIZE];
+        let float_registers_access_counter = vec![0; FLOAT_REGISTER_SIZE];
         let inv_map = create_inv_map();
         let sqrt_map = create_sqrt_map();
         let sld_vec = vec![];
@@ -61,11 +78,17 @@ impl Core {
         let decoded_instructions = vec![];
         let use_cache = true;
         let take_inst_stats = false;
+        let load_stall_counter = 0;
+        let load_dest = None;
+        let before_load_dest = None;
+        let fpu_stall_counter = 0;
+        let flush_counter = 0;
         Core {
             memory,
             cache,
             memory_access_count,
             cache_hit_count,
+            load_cache_miss_count,
             instruction_memory,
             instruction_count,
             int_registers,
@@ -73,6 +96,8 @@ impl Core {
             pc,
             _pc_stats,
             inst_stats,
+            int_registers_access_counter,
+            float_registers_access_counter,
             inv_map,
             sqrt_map,
             sld_vec,
@@ -81,6 +106,11 @@ impl Core {
             decoded_instructions,
             use_cache,
             take_inst_stats,
+            load_stall_counter,
+            load_dest,
+            before_load_dest,
+            fpu_stall_counter,
+            flush_counter,
         }
     }
 
@@ -116,22 +146,32 @@ impl Core {
         self.instruction_memory.store(addr, inst);
     }
 
-    pub fn get_int_register(&self, index: usize) -> Int {
+    pub fn get_int_register(&mut self, index: usize) -> Int {
+        self.int_registers_access_counter[index] += 1;
+        if self.before_load_dest == Some(index) {
+            self.load_stall_counter += 1;
+        }
         self.int_registers[index].get()
     }
 
     pub fn set_int_register(&mut self, index: usize, value: Int) {
+        self.int_registers_access_counter[index] += 1;
         if index == ZERO {
             return; // zero register
         }
         self.int_registers[index].set(value);
     }
 
-    pub fn get_float_register(&self, index: usize) -> FloatingPoint {
+    pub fn get_float_register(&mut self, index: usize) -> FloatingPoint {
+        self.float_registers_access_counter[index] += 1;
+        if self.before_load_dest == Some(index + 32) {
+            self.load_stall_counter += 1;
+        }
         self.float_registers[index].get()
     }
 
     pub fn set_float_register(&mut self, index: usize, value: FloatingPoint) {
+        self.float_registers_access_counter[index] += 1;
         self.float_registers[index].set(value);
     }
 
@@ -141,6 +181,30 @@ impl Core {
 
     fn increment_cache_hit_count(&mut self) {
         self.cache_hit_count += 1;
+    }
+
+    pub fn increment_fpu_stall_counter(&mut self, value: usize) {
+        self.fpu_stall_counter += value;
+    }
+
+    fn show_fpu_stall_counter(&self) {
+        println!("fpu stall: {}", self.fpu_stall_counter);
+    }
+
+    pub fn set_load_dest(&mut self, value: usize) {
+        self.load_dest = Some(value);
+    }
+
+    fn show_load_stall_counter(&self) {
+        println!("load stall: {}", self.load_stall_counter);
+    }
+
+    pub fn increment_flush_counter(&mut self) {
+        self.flush_counter += 1;
+    }
+
+    fn increment_load_cache_miss_count(&mut self) {
+        self.load_cache_miss_count += 1;
     }
 
     fn process_cache_miss(&mut self, addr: Address) {
@@ -162,6 +226,7 @@ impl Core {
                 u8_to_i8(value) as Byte
             }
             CacheAccess::Miss => {
+                self.increment_load_cache_miss_count();
                 let value = self.memory.load_byte(addr);
                 self.process_cache_miss(addr);
                 value
@@ -182,6 +247,7 @@ impl Core {
                 value
             }
             CacheAccess::Miss => {
+                self.increment_load_cache_miss_count();
                 let value = self.memory.load_ubyte(addr);
                 self.process_cache_miss(addr);
                 value
@@ -220,6 +286,7 @@ impl Core {
                 u16_to_i16(value)
             }
             CacheAccess::Miss => {
+                self.increment_load_cache_miss_count();
                 let value = self.memory.load_half(addr);
                 self.process_cache_miss(addr);
                 value
@@ -240,6 +307,7 @@ impl Core {
                 value
             }
             CacheAccess::Miss => {
+                self.increment_load_cache_miss_count();
                 let value = self.memory.load_uhalf(addr);
                 self.process_cache_miss(addr);
                 value
@@ -265,6 +333,7 @@ impl Core {
                     value
                 }
                 CacheAccess::Miss => {
+                    self.increment_load_cache_miss_count();
                     let value = self.memory.load_word(addr);
                     self.process_cache_miss(addr);
                     value
@@ -335,7 +404,7 @@ impl Core {
     #[allow(dead_code)]
     pub fn show_registers(&self) {
         for i in 0..INT_REGISTER_SIZE {
-            print!("x{: <2} 0x{:>08x} ", i, self.get_int_register(i));
+            print!("x{: <2} 0x{:>08x} ", i, self.int_registers[i].get());
             if i % 8 == 7 {
                 println!();
             }
@@ -344,7 +413,7 @@ impl Core {
             print!(
                 "f{: <2} 0x{:>08x} ",
                 i,
-                self.get_float_register(i).get_32_bits()
+                self.float_registers[i].get().get_32_bits()
             );
             if i % 8 == 7 {
                 println!();
@@ -352,44 +421,11 @@ impl Core {
         }
     }
 
-    // #[allow(dead_code)]
-    // fn update_pc_stats(&mut self) {
-    //     if let Some(inst) = self.fetched_instruction {
-    //         let decoded = decode_instruction(inst);
-    //         if let Instruction::Other = decoded {
-    //             return;
-    //         }
-    //         let pc = self.get_pc();
-    //         self.pc_stats
-    //             .entry(pc)
-    //             .and_modify(|e| e.1 += 1)
-    //             .or_insert((decoded, 1));
-    //     }
-    // }
-
-    // fn show_pc_stats(&self) {
-    //     println!("---------- pc stats ----------");
-    //     let mut pc_stats = vec![];
-    //     for (pc, (decoded, inst_count)) in &self.pc_stats {
-    //         let inst = create_instruction_struct(*decoded);
-    //         let inst_name = get_name(&inst);
-    //         pc_stats.push((pc, inst_name, inst_count));
-    //     }
-    //     pc_stats.sort_by(|a, b| b.2.cmp(a.2));
-    //     for pc_stat in &pc_stats {
-    //         let pc_inst_string = format!("{:>08}({})", pc_stat.0, pc_stat.1);
-    //         print_filled_with_space(&pc_inst_string, 25);
-    //         println!("{}", pc_stat.2);
-    //     }
-    // }
-
-    pub fn update_inst_stats(&mut self, inst_name: &str) {
-        if self.take_inst_stats {
-            self.inst_stats
-                .entry(inst_name.to_string())
-                .and_modify(|e| *e += 1)
-                .or_insert(1);
-        }
+    pub fn update_inst_stats(&mut self, inst_name: String) {
+        self.inst_stats
+            .entry(inst_name)
+            .and_modify(|e| *e += 1)
+            .or_insert(1);
     }
 
     fn show_inst_stats(&self) {
@@ -424,6 +460,25 @@ impl Core {
         }
     }
 
+    fn show_registers_access_counter(&self) {
+        println!("---------- registers counter ----------");
+        for i in 0..INT_REGISTER_SIZE {
+            print!("x{: <2} {: >10}  ", i, self.int_registers_access_counter[i]);
+            if i % 8 == 7 {
+                println!();
+            }
+        }
+        for i in 0..FLOAT_REGISTER_SIZE {
+            print!(
+                "f{: <2} {: >10}  ",
+                i, self.float_registers_access_counter[i]
+            );
+            if i % 8 == 7 {
+                println!();
+            }
+        }
+    }
+
     fn load_sld_file(&mut self, path: &str) {
         self.sld_vec = load_sld_file(path);
     }
@@ -442,8 +497,9 @@ impl Core {
 
     pub fn run(
         &mut self,
-        _verbose: u32,
+        take_inst_stats: bool,
         use_cache: bool,
+        show_output: bool,
         ppm_file_path: &str,
         sld_file_path: &str,
     ) {
@@ -456,15 +512,19 @@ impl Core {
         self.load_sld_file(sld_file_path);
         self.decode_all_instructions();
 
-        let guard = pprof::ProfilerGuardBuilder::default()
-            .frequency(1000)
-            .blocklist(&["libc", "libgcc", "pthread", "vdso"])
-            .build()
-            .unwrap();
+        // let guard = pprof::ProfilerGuardBuilder::default()
+        //     .frequency(1000)
+        //     .blocklist(&["libc", "libgcc", "pthread", "vdso"])
+        //     .build()
+        //     .unwrap();
 
         self.use_cache = use_cache;
+        self.take_inst_stats = take_inst_stats;
 
         loop {
+            self.before_load_dest = self.load_dest;
+            self.load_dest = None;
+
             cycle_num += 1;
             if self.get_pc() >= INSTRUCTION_MEMORY_SIZE as Address {
                 println!("End of program.");
@@ -472,10 +532,10 @@ impl Core {
             }
 
             let instrucion = self.decoded_instructions[self.get_pc() as usize >> 2];
-            exec_instruction(instrucion, self);
-
-            // self.update_inst_stats();
-            // self.update_pc_stats();
+            let inst_name = exec_instruction(instrucion, self).to_string();
+            if self.take_inst_stats {
+                self.update_inst_stats(inst_name);
+            }
 
             if cycle_num % 10000000 == 0 {
                 eprint!(
@@ -483,7 +543,7 @@ impl Core {
                     self.instruction_count,
                     self.output.len(),
                     self.get_pc(),
-                    self.get_int_register(2),
+                    self.int_registers[2].get(),
                 );
             }
 
@@ -498,10 +558,21 @@ impl Core {
             }
         }
 
-        if let Ok(report) = guard.report().build() {
-            let file = File::create("flamegraph_256_inline.svg").unwrap();
-            report.flamegraph(file).unwrap();
-        };
+        // if let Ok(report) = guard.report().build() {
+        //     let file = File::create("flamegraph_256_inline.svg").unwrap();
+        //     report.flamegraph(file).unwrap();
+        // };
+
+        let cycle_num = self.instruction_count
+            + self.flush_counter as u128 * JUMP_STALL as u128
+            + self.load_cache_miss_count as u128 * CACHE_MISS_STALL as u128;
+        let cycle_time =
+            cycle_num as f64 / FREQUENCY as f64 + self.output.len() as f64 * 8. / BAUD_RATE as f64;
+
+        println!("flush count: {}", self.flush_counter);
+        println!("load cache miss count: {}", self.load_cache_miss_count);
+        println!("predicted cycle count: {}", cycle_num);
+        println!("predicted execution time: {:.2}s", cycle_time);
 
         println!(
             "executed instruction count: {}\nelapsed time: {:?}\n{:.2} MIPS",
@@ -510,8 +581,14 @@ impl Core {
             self.instruction_count as f64 / start_time.elapsed().as_micros() as f64
         );
         self.show_memory_stats();
-        self.show_output_result();
-        self.show_inst_stats();
-        // self.show_pc_stats();
+        self.show_fpu_stall_counter();
+        self.show_load_stall_counter();
+        self.show_registers_access_counter();
+        if self.take_inst_stats {
+            self.show_inst_stats();
+        }
+        if show_output {
+            self.show_output_result();
+        }
     }
 }
