@@ -2,6 +2,7 @@ pub const ZERO: usize = 0;
 pub const RA: usize = 1;
 pub const SP: usize = 2;
 
+#[allow(dead_code)]
 pub fn u8_to_i8(value: u8) -> i8 {
     if value <= i8::MAX as u8 {
         value as i8
@@ -10,6 +11,7 @@ pub fn u8_to_i8(value: u8) -> i8 {
     }
 }
 
+#[allow(dead_code)]
 pub fn i8_to_u8(value: i8) -> u8 {
     if value >= 0 {
         value as u8
@@ -18,6 +20,7 @@ pub fn i8_to_u8(value: i8) -> u8 {
     }
 }
 
+#[allow(dead_code)]
 pub fn u16_to_i16(value: u16) -> i16 {
     if value <= i16::MAX as u16 {
         value as i16
