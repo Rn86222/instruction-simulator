@@ -36,7 +36,7 @@ pub struct Core {
     float_registers: [FloatRegister; FLOAT_REGISTER_SIZE],
     pc: Address,
     _pc_stats: HashMap<Address, (Instruction, usize)>,
-    inst_stats: HashMap<String, usize>,
+    inst_stats: [usize; 256],
     int_registers_access_counter: Vec<usize>,
     float_registers_access_counter: Vec<usize>,
     inv_map: InvMap,
@@ -67,7 +67,7 @@ impl Core {
         let float_registers = [FloatRegister::new(); FLOAT_REGISTER_SIZE];
         let pc = 0;
         let _pc_stats = HashMap::new();
-        let inst_stats = HashMap::new();
+        let inst_stats = [0; 256];
         let int_registers_access_counter = vec![0; INT_REGISTER_SIZE];
         let float_registers_access_counter = vec![0; FLOAT_REGISTER_SIZE];
         let inv_map = create_inv_map();
@@ -421,18 +421,19 @@ impl Core {
         }
     }
 
-    pub fn update_inst_stats(&mut self, inst_name: String) {
-        self.inst_stats
-            .entry(inst_name)
-            .and_modify(|e| *e += 1)
-            .or_insert(1);
+    pub fn update_inst_stats(&mut self, inst_id: usize) {
+        self.inst_stats[inst_id] += 1;
     }
 
     fn show_inst_stats(&self) {
         println!("---------- inst stats ----------");
+        let inst_id_to_name_map = create_inst_id_to_name_map();
         let mut inst_stats = vec![];
-        for (inst_name, inst_count) in &self.inst_stats {
-            inst_stats.push((inst_name, inst_count));
+        for (id, inst_count) in self.inst_stats.iter().enumerate() {
+            if *inst_count == 0 {
+                continue;
+            }
+            inst_stats.push((inst_id_to_name_map.get(&id).unwrap(), inst_count));
         }
         inst_stats.sort_by(|a, b| b.1.cmp(a.1));
         for inst_stat in &inst_stats {
@@ -513,7 +514,7 @@ impl Core {
         self.decode_all_instructions();
 
         // let guard = pprof::ProfilerGuardBuilder::default()
-        //     .frequency(1000)
+        //     .frequency(10000)
         //     .blocklist(&["libc", "libgcc", "pthread", "vdso"])
         //     .build()
         //     .unwrap();
@@ -532,9 +533,9 @@ impl Core {
             }
 
             let instrucion = self.decoded_instructions[self.get_pc() as usize >> 2];
-            let inst_name = exec_instruction(instrucion, self).to_string();
+            let inst_id = exec_instruction(instrucion, self);
             if self.take_inst_stats {
-                self.update_inst_stats(inst_name);
+                self.update_inst_stats(inst_id);
             }
 
             if cycle_num % 10000000 == 0 {
@@ -559,7 +560,7 @@ impl Core {
         }
 
         // if let Ok(report) = guard.report().build() {
-        //     let file = File::create("flamegraph_256_inline.svg").unwrap();
+        //     let file = File::create("flamegraph-minrt-i.svg").unwrap();
         //     report.flamegraph(file).unwrap();
         // };
 

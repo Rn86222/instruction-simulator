@@ -23,3 +23,4 @@ pub type Fs1 = u8;
 pub type Funct2 = u8;
 pub type Fd = u8;
 pub type InstructionCount = u128;
+pub type InstructionId = usize;
