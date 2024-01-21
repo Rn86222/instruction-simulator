@@ -3,9 +3,9 @@ use linked_hash_map::LinkedHashMap;
 
 type CacheValue = [MemoryValue; LINE_SIZE];
 
-const CACHE_SIZE: usize = 2 * 128 * 1024;
-const WAY_NUM: usize = 2;
-pub const LINE_SIZE: usize = 64;
+const CACHE_SIZE: usize = 16 * 1024;
+const WAY_NUM: usize = 1;
+pub const LINE_SIZE: usize = 16;
 const TOTAL_LINE_NUM: usize = CACHE_SIZE / LINE_SIZE;
 const LINE_NUM: usize = TOTAL_LINE_NUM / WAY_NUM;
 
