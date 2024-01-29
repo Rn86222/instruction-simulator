@@ -1,5 +1,7 @@
+use indicatif::{ProgressBar, ProgressStyle};
 use std::collections::HashMap;
 use std::fs::File;
+use std::io::Read;
 use std::io::Write;
 use std::time::Instant;
 use std::vec;
@@ -46,7 +48,6 @@ pub struct Core {
     output: Vec<u8>,
     decoded_instructions: Vec<Instruction>,
     use_cache: bool,
-    take_inst_stats: bool,
     load_stall_counter: usize,
     load_dest: Option<usize>,
     before_load_dest: Option<usize>,
@@ -77,7 +78,6 @@ impl Core {
         let output = vec![];
         let decoded_instructions = vec![];
         let use_cache = true;
-        let take_inst_stats = false;
         let load_stall_counter = 0;
         let load_dest = None;
         let before_load_dest = None;
@@ -105,7 +105,6 @@ impl Core {
             output,
             decoded_instructions,
             use_cache,
-            take_inst_stats,
             load_stall_counter,
             load_dest,
             before_load_dest,
@@ -496,31 +495,74 @@ impl Core {
         }
     }
 
-    pub fn run(
-        &mut self,
-        take_inst_stats: bool,
-        use_cache: bool,
-        show_output: bool,
-        ppm_file_path: &str,
-        sld_file_path: &str,
-    ) {
+    fn load_bin_file(&mut self, bin_file: &str) {
+        match File::open(bin_file) {
+            Err(e) => {
+                panic!("Failed in opening file ({}).", e);
+            }
+            Ok(mut file) => {
+                let mut buf = Vec::new();
+                file.read_to_end(&mut buf).unwrap();
+                let mut inst_count = 0;
+                let mut inst = 0;
+                for byte in &buf {
+                    inst += (*byte as u32) << ((inst_count % 4) * 8);
+                    inst_count += 1;
+                    if inst_count % 4 == 0 {
+                        self.store_instruction(inst_count - 4, inst);
+                        inst = 0;
+                    }
+                }
+                if inst_count % 4 != 0 {
+                    panic!("Reading file failed.\nThe size of sum of instructions is not a multiple of 4. {}", inst_count);
+                }
+            }
+        }
+    }
+
+    fn init(&mut self) {
+        self.set_int_register(RA, INSTRUCTION_MEMORY_SIZE as Int);
+        self.set_int_register(SP, MEMORY_SIZE as Int);
+    }
+
+    fn show_progress(&self, progress_bar_size: u64, pb: &ProgressBar) {
+        if progress_bar_size == 0 {
+            eprint!(
+                "\r{} {:>08} pc: {:>06} sp: {:>010}",
+                self.instruction_count,
+                self.output.len(),
+                self.get_pc(),
+                self.int_registers[SP].get(),
+            );
+        } else {
+            pb.set_position(self.output.len() as u64);
+        }
+    }
+
+    pub fn run(&mut self, props: CoreProps) {
         let start_time = Instant::now();
         let mut cycle_num: u128 = 0;
 
-        let mut ppm_file = File::create(ppm_file_path).unwrap();
+        let mut ppm_file = File::create(props.ppm_file_path).unwrap();
         let mut before_output_len = 0;
 
-        self.load_sld_file(sld_file_path);
+        self.init();
+        self.load_bin_file(&props.bin_file_path);
+        self.load_sld_file(&props.sld_file_path);
         self.decode_all_instructions();
 
-        // let guard = pprof::ProfilerGuardBuilder::default()
-        //     .frequency(10000)
-        //     .blocklist(&["libc", "libgcc", "pthread", "vdso"])
-        //     .build()
-        //     .unwrap();
+        let pb = ProgressBar::new(props.progress_bar_size);
+        pb.set_style(ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} \n {msg}")
+        .unwrap()
+        .progress_chars("#>-"));
 
-        self.use_cache = use_cache;
-        self.take_inst_stats = take_inst_stats;
+        let guard = pprof::ProfilerGuardBuilder::default()
+            .frequency(10000)
+            .blocklist(&["libc", "libgcc", "pthread", "vdso"])
+            .build()
+            .unwrap();
+
+        self.use_cache = props.use_cache;
 
         loop {
             self.before_load_dest = self.load_dest;
@@ -528,24 +570,18 @@ impl Core {
 
             cycle_num += 1;
             if self.get_pc() >= INSTRUCTION_MEMORY_SIZE as Address {
-                println!("End of program.");
+                pb.finish_with_message("End of program.");
                 break;
             }
 
             let instrucion = self.decoded_instructions[self.get_pc() as usize >> 2];
             let inst_id = exec_instruction(instrucion, self);
-            if self.take_inst_stats {
+            if props.take_inst_stats {
                 self.update_inst_stats(inst_id);
             }
 
             if cycle_num % 10000000 == 0 {
-                eprint!(
-                    "\r{} {:>08} pc: {:>06} sp: {:>010}",
-                    self.instruction_count,
-                    self.output.len(),
-                    self.get_pc(),
-                    self.int_registers[2].get(),
-                );
+                self.show_progress(props.progress_bar_size, &pb);
             }
 
             self.increment_instruction_count();
@@ -559,10 +595,12 @@ impl Core {
             }
         }
 
-        // if let Ok(report) = guard.report().build() {
-        //     let file = File::create("flamegraph-minrt-i.svg").unwrap();
-        //     report.flamegraph(file).unwrap();
-        // };
+        if let Some(prof_file_path) = props.prof_file_path {
+            if let Ok(report) = guard.report().build() {
+                let file = File::create(prof_file_path).unwrap();
+                report.flamegraph(file).unwrap();
+            };
+        }
 
         let cycle_num = self.instruction_count
             + self.flush_counter as u128 * FLUSH_STALL as u128
@@ -585,11 +623,22 @@ impl Core {
         self.show_fpu_stall_counter();
         self.show_load_stall_counter();
         self.show_registers_access_counter();
-        if self.take_inst_stats {
+        if props.take_inst_stats {
             self.show_inst_stats();
         }
-        if show_output {
+        if props.show_output {
             self.show_output_result();
         }
     }
+}
+
+pub struct CoreProps {
+    pub take_inst_stats: bool,
+    pub use_cache: bool,
+    pub show_output: bool,
+    pub progress_bar_size: u64,
+    pub bin_file_path: String,
+    pub ppm_file_path: String,
+    pub sld_file_path: String,
+    pub prof_file_path: Option<String>,
 }

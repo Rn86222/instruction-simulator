@@ -1,5 +1,5 @@
 run:
-	ulimit -s unlimited && cargo run --release -- --bin main.bin --verbose 2 > result.txt
+	ulimit -s unlimited && cargo run --release -- --progress-bar-size 786447 --no-cache --bin minrt.bin --sld ./sld/contest.sld
 
 minrt:
 	ulimit -s unlimited && cargo run --release -- --bin minrt.bin > minrt-result.txt
