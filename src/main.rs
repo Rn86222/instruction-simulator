@@ -16,39 +16,40 @@ use clap::Parser;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    /// Name of the input binary file
+    /// Name of the input binary file.
     #[arg(short, long, default_value = "main.bin")]
     bin: String,
 
-    /// Name of sld file for raytracing
+    /// Name of sld file for raytracing.
     #[arg(short, long, default_value = "./sld/contest.sld")]
     sld: String,
 
-    /// Name of the output ppm file
-    #[arg(short, long)]
+    /// Name of the output ppm file.
+    #[arg(long)]
     ppm: Option<String>,
 
-    /// No cache mode
-    /// If this flag is set, the simulator won't use cache
+    /// No cache mode.
+    /// If this flag is set, the simulator won't use cache.
     #[arg(short, long)]
     no_cache: bool,
 
-    /// Take instruction statistics
+    /// Take instruction statistics.
     #[arg(short, long)]
     inst_stats: bool,
 
-    /// Show output
+    /// Show output.
     #[arg(short, long)]
     show_output: bool,
 
-    /// Show progress bar
-    /// If this flag is set with a value, the simulator will show progress bar
-    /// The value of this flag is the total size of output ppm file
+    /// Show progress bar.
+    /// If this flag is set with a value, the simulator will show progress bar.
+    /// The value of this flag is the total size of output ppm file.
     #[arg(short, long, default_value = "0")]
     progress_bar_size: u64,
 
-    /// Profiling mode
-    #[arg(short, long)]
+    /// Profiling mode.
+    /// If this flag is set with a file name, the simulator will output framegraph with the given file name.
+    #[arg(long)]
     prof: Option<String>,
 }
 

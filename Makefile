@@ -1,6 +1,9 @@
 run:
 	ulimit -s unlimited && cargo run --release -- --progress-bar-size 786447 --no-cache --bin minrt.bin --sld ./sld/contest.sld
 
+full:
+	ulimit -s unlimited && cargo run --release -- --progress-bar-size 786447 --inst-stats --bin minrt.bin --sld ./sld/contest.sld
+
 minrt:
 	ulimit -s unlimited && cargo run --release -- --bin minrt.bin > minrt-result.txt
 
@@ -11,7 +14,7 @@ minrt_256:
 	ulimit -s unlimited && cargo run --release -- --bin minrt_256.bin > minrt_256-result.txt
 
 help:
-	cargo run --release -- --help
+	ulimit -s unlimited && cargo run --release -- --help
 
 clean:
 	cargo clean
