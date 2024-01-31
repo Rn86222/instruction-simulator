@@ -47,6 +47,13 @@ const BGE: usize = 26;
 const JAL: usize = 27;
 const LUI: usize = 28;
 const XOR: usize = 29;
+const IN: usize = 30;
+const FIN: usize = 31;
+const OUTCHAR: usize = 32;
+const FBEQ: usize = 33;
+const FBNE: usize = 34;
+const FBLT: usize = 35;
+const FBGE: usize = 36;
 
 pub fn sign_extention_i16(value: i16, before_bit: usize) -> i16 {
     if (value >> (before_bit - 1)) & 1 == 0 {
@@ -178,7 +185,7 @@ pub fn exec_i_instruction(
                 // flw
                 let extended_imm = sign_extention_i16(imm, 12) as i32;
                 let addr = (core.get_int_register(rs1 as usize) + extended_imm) as Address;
-                let value = FloatingPoint::new(i32_to_u32(core.load_word_fp(addr)));
+                let value = FloatingPoint::new(i32_to_u32(core.load_word(addr)));
                 core.set_float_register(rd as usize, value);
                 core.increment_pc();
                 core.set_load_dest(rd as usize + 32);
@@ -193,6 +200,37 @@ pub fn exec_i_instruction(
                 // end
                 core.end();
                 END
+            }
+            _ => {
+                panic!("unexpected funct3: {}", funct3)
+            }
+        },
+        116 => match funct3 {
+            0b000 => {
+                // in
+                let value = core.read_int();
+                core.set_int_register(rd as usize, value);
+                core.increment_pc();
+                IN
+            }
+            0b001 => {
+                // fin
+                let value = core.read_float();
+                core.set_float_register(rd as usize, FloatingPoint::new(i32_to_u32(value)));
+                core.increment_pc();
+                FIN
+            }
+            _ => {
+                panic!("unexpected funct3: {}", funct3)
+            }
+        },
+        117 => match funct3 {
+            0b000 => {
+                // outchar
+                let value = core.get_int_register(rs1 as usize);
+                core.print_char(value);
+                core.increment_pc();
+                OUTCHAR
             }
             _ => {
                 panic!("unexpected funct3: {}", funct3)
@@ -503,6 +541,55 @@ fn exec_b_instruction(
                 panic!("unexpected funct3: {}", funct3);
             }
         },
+        100 => match funct3 {
+            0b000 => {
+                // fbeq
+                let extended_imm = sign_extention_i16(imm, 12) as i32;
+                if core.get_float_register(rs1 as usize) == core.get_float_register(rs2 as usize) {
+                    core.set_pc(core.get_pc() + (extended_imm << 1) as Address);
+                } else {
+                    core.increment_pc();
+                }
+                core.increment_flush_counter();
+                FBEQ
+            }
+            0b001 => {
+                // fbne
+                let extended_imm = sign_extention_i16(imm, 12) as i32;
+                if core.get_float_register(rs1 as usize) != core.get_float_register(rs2 as usize) {
+                    core.set_pc(core.get_pc() + (extended_imm << 1) as Address);
+                } else {
+                    core.increment_pc();
+                }
+                core.increment_flush_counter();
+                FBNE
+            }
+            0b100 => {
+                // fblt
+                let extended_imm = sign_extention_i16(imm, 12) as i32;
+                if core.get_float_register(rs1 as usize) < core.get_float_register(rs2 as usize) {
+                    core.set_pc(core.get_pc() + (extended_imm << 1) as Address);
+                } else {
+                    core.increment_pc();
+                }
+                core.increment_flush_counter();
+                FBLT
+            }
+            0b101 => {
+                // fbge
+                let extended_imm = sign_extention_i16(imm, 12) as i32;
+                if core.get_float_register(rs1 as usize) >= core.get_float_register(rs2 as usize) {
+                    core.set_pc(core.get_pc() + (extended_imm << 1) as Address);
+                } else {
+                    core.increment_pc();
+                }
+                core.increment_flush_counter();
+                FBGE
+            }
+            _ => {
+                panic!("unexpected funct3: {}", funct3);
+            }
+        },
         _ => {
             panic!("unexpected op: {}", op);
         }
@@ -588,5 +675,12 @@ pub fn create_inst_id_to_name_map() -> HashMap<InstructionId, String> {
     map.insert(JAL, "jal".to_string());
     map.insert(LUI, "lui".to_string());
     map.insert(XOR, "xor".to_string());
+    map.insert(IN, "in".to_string());
+    map.insert(FIN, "fin".to_string());
+    map.insert(OUTCHAR, "outchar".to_string());
+    map.insert(FBEQ, "fbeq".to_string());
+    map.insert(FBNE, "fbne".to_string());
+    map.insert(FBLT, "fblt".to_string());
+    map.insert(FBGE, "fbge".to_string());
     map
 }
