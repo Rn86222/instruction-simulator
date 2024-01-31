@@ -46,6 +46,7 @@ const BLT: usize = 25;
 const BGE: usize = 26;
 const JAL: usize = 27;
 const LUI: usize = 28;
+const XOR: usize = 29;
 
 pub fn sign_extention_i16(value: i16, before_bit: usize) -> i16 {
     if (value >> (before_bit - 1)) & 1 == 0 {
@@ -230,6 +231,19 @@ fn exec_r_instruction(
                     core.set_int_register(rd as usize, value);
                     core.increment_pc();
                     SUB
+                }
+                _ => {
+                    panic!("unexpected funct7: {}", funct7);
+                }
+            },
+            0b100 => match funct7 {
+                0b0000000 => {
+                    // xor
+                    let value =
+                        core.get_int_register(rs1 as usize) ^ core.get_int_register(rs2 as usize);
+                    core.set_int_register(rd as usize, value);
+                    core.increment_pc();
+                    XOR
                 }
                 _ => {
                     panic!("unexpected funct7: {}", funct7);
@@ -573,5 +587,6 @@ pub fn create_inst_id_to_name_map() -> HashMap<InstructionId, String> {
     map.insert(BGE, "bge".to_string());
     map.insert(JAL, "jal".to_string());
     map.insert(LUI, "lui".to_string());
+    map.insert(XOR, "xor".to_string());
     map
 }
