@@ -55,6 +55,8 @@ const FBNE: usize = 34;
 const FBLT: usize = 35;
 const FBLE: usize = 36;
 
+const UIMM_MASK: i16 = 63;
+
 pub fn sign_extention_i16(value: i16, before_bit: usize) -> i16 {
     if (value >> (before_bit - 1)) & 1 == 0 {
         value
@@ -95,9 +97,9 @@ pub fn exec_instruction(inst: Instruction, core: &mut Core) -> InstructionId {
         }
         Instruction::J(imm, rd, op) => exec_j_instruction(imm, rd, op, core),
         Instruction::U(imm, rd, op) => exec_u_instruction(imm, rd, op, core),
-        Instruction::R4(fs3, funct2, fs2, fs1, funct3, rd, op) => {
-            exec_r4_instruction(fs3, funct2, fs2, fs1, funct3, rd, op, core)
-        }
+        // Instruction::R4(fs3, funct2, fs2, fs1, funct3, rd, op) => {
+        //     exec_r4_instruction(fs3, funct2, fs2, fs1, funct3, rd, op, core)
+        // }
         Instruction::Other => {
             panic!("unexpected instruction: {:?}", inst);
         }
@@ -105,7 +107,7 @@ pub fn exec_instruction(inst: Instruction, core: &mut Core) -> InstructionId {
 }
 
 pub fn exec_i_instruction(
-    imm: Imm12,
+    imm: Imm13,
     rs1: Rs1,
     funct3: Funct3,
     rd: Rd,
@@ -113,10 +115,10 @@ pub fn exec_i_instruction(
     core: &mut Core,
 ) -> InstructionId {
     match op {
-        3 => match funct3 {
+        0 => match funct3 {
             0b010 => {
                 // lw
-                let extended_imm = sign_extention_i16(imm, 12) as i32;
+                let extended_imm = sign_extention_i16(imm, 13) as i32;
                 let addr = (core.get_int_register(rs1 as usize) + extended_imm) as Address;
                 let value = core.load_word(addr) as Int;
                 core.set_int_register(rd as usize, value);
@@ -128,10 +130,10 @@ pub fn exec_i_instruction(
                 panic!("unexpected funct3: {}", funct3);
             }
         },
-        19 => match funct3 {
+        1 => match funct3 {
             0b000 => {
                 // addi
-                let extended_imm = sign_extention_i16(imm, 12) as i32;
+                let extended_imm = sign_extention_i16(imm, 13) as i32;
                 let value = core.get_int_register(rs1 as usize) + extended_imm;
                 core.set_int_register(rd as usize, value);
                 core.increment_pc();
@@ -139,18 +141,18 @@ pub fn exec_i_instruction(
             }
             0b001 => {
                 // slli
-                let uimm = (imm & 0x1f) as u32;
+                let uimm = (imm & UIMM_MASK) as u32;
                 let value = core.get_int_register(rs1 as usize) << uimm;
                 core.set_int_register(rd as usize, value);
                 core.increment_pc();
                 SLLI
             }
             0b101 => {
-                let funct7 = (imm >> 5) & 0b1111111;
+                let funct7 = (imm >> 6) & 0b1111111;
                 match funct7 {
                     0b0100000 => {
                         // srai
-                        let uimm = (imm & 0x1f) as u32;
+                        let uimm = (imm & UIMM_MASK) as u32;
                         let value = core.get_int_register(rs1 as usize) >> uimm;
                         core.set_int_register(rd as usize, value);
                         core.increment_pc();
@@ -165,12 +167,12 @@ pub fn exec_i_instruction(
                 panic!("unexpected funct3: {}", funct3);
             }
         },
-        103 => match funct3 {
+        6 => match funct3 {
             0b000 => {
                 // jalr
-                let extended_imm = sign_extention_i16(imm, 12) as i32;
+                let extended_imm = sign_extention_i16(imm, 13) as i32;
                 let jump_address =
-                    (core.get_int_register(rs1 as usize) + (extended_imm << 1)) as Address;
+                    (core.get_int_register(rs1 as usize) + (extended_imm << 2)) as Address;
                 core.set_int_register(rd as usize, core.get_pc() as Int + 4);
                 core.set_pc(jump_address);
                 core.increment_flush_counter();
@@ -180,10 +182,10 @@ pub fn exec_i_instruction(
                 panic!("unexpected funct3: {}", funct3);
             }
         },
-        7 => match funct3 {
+        8 => match funct3 {
             0b010 => {
                 // flw
-                let extended_imm = sign_extention_i16(imm, 12) as i32;
+                let extended_imm = sign_extention_i16(imm, 13) as i32;
                 let addr = (core.get_int_register(rs1 as usize) + extended_imm) as Address;
                 let value = FloatingPoint::new(i32_to_u32(core.load_word(addr)));
                 core.set_float_register(rd as usize, value);
@@ -195,7 +197,7 @@ pub fn exec_i_instruction(
                 panic!("unexpected funct3: {}", funct3)
             }
         },
-        115 => match funct3 {
+        11 => match funct3 {
             0b000 => {
                 // end
                 core.end();
@@ -205,7 +207,7 @@ pub fn exec_i_instruction(
                 panic!("unexpected funct3: {}", funct3)
             }
         },
-        116 => match funct3 {
+        14 => match funct3 {
             0b000 => {
                 // in
                 let value = core.read_int();
@@ -240,7 +242,7 @@ fn exec_r_instruction(
     core: &mut Core,
 ) -> InstructionId {
     match op {
-        51 => match funct3 {
+        3 => match funct3 {
             0b000 => match funct7 {
                 0b0000000 => {
                     // add
@@ -279,7 +281,7 @@ fn exec_r_instruction(
                 panic!("unexpected funct3: {}", funct3);
             }
         },
-        83 => match funct7 {
+        9 => match funct7 {
             0b0000000 => {
                 // fadd
                 let value =
@@ -429,7 +431,7 @@ fn exec_r_instruction(
 }
 
 fn exec_s_instruction(
-    imm: Imm12,
+    imm: Imm13,
     rs2: Rs2,
     rs1: Rs1,
     funct3: Funct3,
@@ -437,10 +439,10 @@ fn exec_s_instruction(
     core: &mut Core,
 ) -> InstructionId {
     match op {
-        35 => match funct3 {
+        2 => match funct3 {
             // sw
             0b010 => {
-                let extended_imm = sign_extention_i16(imm, 12) as i32;
+                let extended_imm = sign_extention_i16(imm, 13) as i32;
                 let addr = (core.get_int_register(rs1 as usize) + extended_imm) as Address;
                 let rs2_value = core.get_int_register(rs2 as usize);
                 core.store_word(addr, rs2_value as Word);
@@ -451,10 +453,10 @@ fn exec_s_instruction(
                 panic!("unexpected funct3: {}", funct3);
             }
         },
-        39 => match funct3 {
+        10 => match funct3 {
             0b010 => {
                 // fsw
-                let extended_imm = sign_extention_i16(imm, 12) as i32;
+                let extended_imm = sign_extention_i16(imm, 13) as i32;
                 let addr = (core.get_int_register(rs1 as usize) + extended_imm) as Address;
                 let rs2_value = core.get_float_register(rs2 as usize);
                 core.store_word(addr, u32_to_i32(rs2_value.get_32_bits()));
@@ -465,7 +467,7 @@ fn exec_s_instruction(
                 panic!("unexpected funct3: {}", funct3)
             }
         },
-        117 => match funct3 {
+        12 => match funct3 {
             0b000 => {
                 // outchar
                 let value = core.get_int_register(rs2 as usize);
@@ -484,7 +486,7 @@ fn exec_s_instruction(
 }
 
 fn exec_b_instruction(
-    imm: Imm12,
+    imm: Imm13,
     rs2: Rs2,
     rs1: Rs1,
     funct3: Funct3,
@@ -492,12 +494,12 @@ fn exec_b_instruction(
     core: &mut Core,
 ) -> InstructionId {
     match op {
-        99 => match funct3 {
+        5 => match funct3 {
             0b000 => {
                 // beq
-                let extended_imm = sign_extention_i16(imm, 12) as i32;
+                let extended_imm = sign_extention_i16(imm, 13) as i32;
                 if core.get_int_register(rs1 as usize) == core.get_int_register(rs2 as usize) {
-                    core.set_pc(core.get_pc() + (extended_imm << 1) as Address);
+                    core.set_pc(core.get_pc() + (extended_imm << 2) as Address);
                 } else {
                     core.increment_pc();
                 }
@@ -506,9 +508,9 @@ fn exec_b_instruction(
             }
             0b001 => {
                 // bne
-                let extended_imm = sign_extention_i16(imm, 12) as i32;
+                let extended_imm = sign_extention_i16(imm, 13) as i32;
                 if core.get_int_register(rs1 as usize) != core.get_int_register(rs2 as usize) {
-                    core.set_pc(core.get_pc() + (extended_imm << 1) as Address);
+                    core.set_pc(core.get_pc() + (extended_imm << 2) as Address);
                 } else {
                     core.increment_pc();
                 }
@@ -517,9 +519,9 @@ fn exec_b_instruction(
             }
             0b100 => {
                 // blt
-                let extended_imm = sign_extention_i16(imm, 12) as i32;
+                let extended_imm = sign_extention_i16(imm, 13) as i32;
                 if core.get_int_register(rs1 as usize) < core.get_int_register(rs2 as usize) {
-                    core.set_pc(core.get_pc() + (extended_imm << 1) as Address);
+                    core.set_pc(core.get_pc() + (extended_imm << 2) as Address);
                 } else {
                     core.increment_pc();
                 }
@@ -528,9 +530,9 @@ fn exec_b_instruction(
             }
             0b101 => {
                 // bge
-                let extended_imm = sign_extention_i16(imm, 12) as i32;
+                let extended_imm = sign_extention_i16(imm, 13) as i32;
                 if core.get_int_register(rs1 as usize) >= core.get_int_register(rs2 as usize) {
-                    core.set_pc(core.get_pc() + (extended_imm << 1) as Address);
+                    core.set_pc(core.get_pc() + (extended_imm << 2) as Address);
                 } else {
                     core.increment_pc();
                 }
@@ -541,12 +543,12 @@ fn exec_b_instruction(
                 panic!("unexpected funct3: {}", funct3);
             }
         },
-        100 => match funct3 {
+        13 => match funct3 {
             0b000 => {
                 // fbeq
-                let extended_imm = sign_extention_i16(imm, 12) as i32;
+                let extended_imm = sign_extention_i16(imm, 13) as i32;
                 if core.get_float_register(rs1 as usize) == core.get_float_register(rs2 as usize) {
-                    core.set_pc(core.get_pc() + (extended_imm << 1) as Address);
+                    core.set_pc(core.get_pc() + (extended_imm << 2) as Address);
                 } else {
                     core.increment_pc();
                 }
@@ -555,9 +557,9 @@ fn exec_b_instruction(
             }
             0b001 => {
                 // fbne
-                let extended_imm = sign_extention_i16(imm, 12) as i32;
+                let extended_imm = sign_extention_i16(imm, 13) as i32;
                 if core.get_float_register(rs1 as usize) != core.get_float_register(rs2 as usize) {
-                    core.set_pc(core.get_pc() + (extended_imm << 1) as Address);
+                    core.set_pc(core.get_pc() + (extended_imm << 2) as Address);
                 } else {
                     core.increment_pc();
                 }
@@ -566,9 +568,9 @@ fn exec_b_instruction(
             }
             0b100 => {
                 // fblt
-                let extended_imm = sign_extention_i16(imm, 12) as i32;
+                let extended_imm = sign_extention_i16(imm, 13) as i32;
                 if core.get_float_register(rs1 as usize) < core.get_float_register(rs2 as usize) {
-                    core.set_pc(core.get_pc() + (extended_imm << 1) as Address);
+                    core.set_pc(core.get_pc() + (extended_imm << 2) as Address);
                 } else {
                     core.increment_pc();
                 }
@@ -577,9 +579,9 @@ fn exec_b_instruction(
             }
             0b101 => {
                 // fble
-                let extended_imm = sign_extention_i16(imm, 12) as i32;
+                let extended_imm = sign_extention_i16(imm, 13) as i32;
                 if core.get_float_register(rs1 as usize) <= core.get_float_register(rs2 as usize) {
-                    core.set_pc(core.get_pc() + (extended_imm << 1) as Address);
+                    core.set_pc(core.get_pc() + (extended_imm << 2) as Address);
                 } else {
                     core.increment_pc();
                 }
@@ -596,12 +598,12 @@ fn exec_b_instruction(
     }
 }
 
-fn exec_j_instruction(imm: Imm20, rd: Rd, op: Op, core: &mut Core) -> InstructionId {
+fn exec_j_instruction(imm: Imm19, rd: Rd, op: Op, core: &mut Core) -> InstructionId {
     match op {
-        111 => {
+        7 => {
             // jal
-            let extended_imm = sign_extention_i32(imm, 20);
-            let jump_address = (core.get_pc() as i32 + (extended_imm << 1)) as Address;
+            let extended_imm = sign_extention_i32(imm, 19);
+            let jump_address = (core.get_pc() as i32 + (extended_imm << 2)) as Address;
             core.set_int_register(rd as usize, core.get_pc() as Int + 4);
             core.set_pc(jump_address);
             core.increment_flush_counter();
@@ -613,11 +615,11 @@ fn exec_j_instruction(imm: Imm20, rd: Rd, op: Op, core: &mut Core) -> Instructio
     }
 }
 
-fn exec_u_instruction(imm: Imm20, rd: Rd, op: Op, core: &mut Core) -> InstructionId {
+fn exec_u_instruction(imm: Imm19, rd: Rd, op: Op, core: &mut Core) -> InstructionId {
     match op {
-        55 => {
+        4 => {
             // lui
-            let upimm = imm << 12;
+            let upimm = imm << 13;
             let value = upimm;
             core.set_int_register(rd as usize, value);
             core.increment_pc();
@@ -630,6 +632,7 @@ fn exec_u_instruction(imm: Imm20, rd: Rd, op: Op, core: &mut Core) -> Instructio
 }
 
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 fn exec_r4_instruction(
     _fs3: Fs3,
     _funct2: Funct2,
