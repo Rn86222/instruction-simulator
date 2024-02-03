@@ -81,9 +81,9 @@ enum InstructionType {
 fn instruction_typeof(inst: InstructionValue) -> InstructionType {
     let op = inst & 127;
     match op {
-        3 | 7 | 19 | 27 | 103 | 115 | 116 | 117 => InstructionType::I,
+        3 | 7 | 19 | 27 | 103 | 115 | 116 => InstructionType::I,
         51 | 59 | 83 => InstructionType::R,
-        35 | 39 => InstructionType::S,
+        35 | 39 | 117 => InstructionType::S,
         111 => InstructionType::J,
         99 | 100 => InstructionType::B,
         23 | 55 => InstructionType::U,

@@ -53,7 +53,7 @@ const OUTCHAR: usize = 32;
 const FBEQ: usize = 33;
 const FBNE: usize = 34;
 const FBLT: usize = 35;
-const FBGE: usize = 36;
+const FBLE: usize = 36;
 
 pub fn sign_extention_i16(value: i16, before_bit: usize) -> i16 {
     if (value >> (before_bit - 1)) & 1 == 0 {
@@ -219,18 +219,6 @@ pub fn exec_i_instruction(
                 core.set_float_register(rd as usize, FloatingPoint::new(i32_to_u32(value)));
                 core.increment_pc();
                 FIN
-            }
-            _ => {
-                panic!("unexpected funct3: {}", funct3)
-            }
-        },
-        117 => match funct3 {
-            0b000 => {
-                // outchar
-                let value = core.get_int_register(rs1 as usize);
-                core.print_char(value);
-                core.increment_pc();
-                OUTCHAR
             }
             _ => {
                 panic!("unexpected funct3: {}", funct3)
@@ -477,6 +465,18 @@ fn exec_s_instruction(
                 panic!("unexpected funct3: {}", funct3)
             }
         },
+        117 => match funct3 {
+            0b000 => {
+                // outchar
+                let value = core.get_int_register(rs2 as usize);
+                core.print_char(value);
+                core.increment_pc();
+                OUTCHAR
+            }
+            _ => {
+                panic!("unexpected funct3: {}", funct3)
+            }
+        },
         _ => {
             panic!("unexpected op: {}", op);
         }
@@ -576,15 +576,15 @@ fn exec_b_instruction(
                 FBLT
             }
             0b101 => {
-                // fbge
+                // fble
                 let extended_imm = sign_extention_i16(imm, 12) as i32;
-                if core.get_float_register(rs1 as usize) >= core.get_float_register(rs2 as usize) {
+                if core.get_float_register(rs1 as usize) <= core.get_float_register(rs2 as usize) {
                     core.set_pc(core.get_pc() + (extended_imm << 1) as Address);
                 } else {
                     core.increment_pc();
                 }
                 core.increment_flush_counter();
-                FBGE
+                FBLE
             }
             _ => {
                 panic!("unexpected funct3: {}", funct3);
@@ -681,6 +681,6 @@ pub fn create_inst_id_to_name_map() -> HashMap<InstructionId, String> {
     map.insert(FBEQ, "fbeq".to_string());
     map.insert(FBNE, "fbne".to_string());
     map.insert(FBLT, "fblt".to_string());
-    map.insert(FBGE, "fbge".to_string());
+    map.insert(FBLE, "fble".to_string());
     map
 }
