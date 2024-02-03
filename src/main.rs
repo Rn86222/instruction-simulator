@@ -37,6 +37,10 @@ struct Args {
     #[arg(short, long)]
     inst_stats: bool,
 
+    /// Take program-counter statistics.
+    #[arg(long)]
+    pc_stats: bool,
+
     /// Show output.
     #[arg(short, long)]
     show_output: bool,
@@ -59,6 +63,7 @@ fn main() {
     let args = Args::parse();
     let use_cache = !args.no_cache;
     let take_inst_stats = args.inst_stats;
+    let take_pc_stats = args.pc_stats;
     let show_output = args.show_output;
     let progress_bar_size = args.progress_bar_size;
     let bin_file_path = args.bin.clone();
@@ -68,6 +73,7 @@ fn main() {
     let props = CoreProps {
         use_cache,
         take_inst_stats,
+        take_pc_stats,
         show_output,
         progress_bar_size,
         bin_file_path,

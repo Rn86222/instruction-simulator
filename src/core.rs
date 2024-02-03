@@ -1,5 +1,5 @@
 use indicatif::{ProgressBar, ProgressStyle};
-use std::collections::HashMap;
+// use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::io::Write;
@@ -37,7 +37,7 @@ pub struct Core {
     int_registers: [IntRegister; INT_REGISTER_SIZE],
     float_registers: [FloatRegister; FLOAT_REGISTER_SIZE],
     pc: Address,
-    _pc_stats: HashMap<Address, (Instruction, usize)>,
+    pc_stats: [(usize, usize); 100000],
     inst_stats: [usize; 256],
     int_registers_access_counter: Vec<usize>,
     float_registers_access_counter: Vec<usize>,
@@ -67,7 +67,7 @@ impl Core {
         let int_registers = [IntRegister::new(); INT_REGISTER_SIZE];
         let float_registers = [FloatRegister::new(); FLOAT_REGISTER_SIZE];
         let pc = 0;
-        let _pc_stats = HashMap::new();
+        let pc_stats = [(0, 0); 100000];
         let inst_stats = [0; 256];
         let int_registers_access_counter = vec![0; INT_REGISTER_SIZE];
         let float_registers_access_counter = vec![0; FLOAT_REGISTER_SIZE];
@@ -94,7 +94,7 @@ impl Core {
             int_registers,
             float_registers,
             pc,
-            _pc_stats,
+            pc_stats,
             inst_stats,
             int_registers_access_counter,
             float_registers_access_counter,
@@ -444,6 +444,11 @@ impl Core {
         self.inst_stats[inst_id] += 1;
     }
 
+    pub fn update_pc_stats(&mut self, pc: u32, inst_id: usize) {
+        self.pc_stats[(pc >> 2) as usize].0 += 1;
+        self.pc_stats[(pc >> 2) as usize].1 = inst_id;
+    }
+
     fn show_inst_stats(&self) {
         println!("---------- inst stats ----------");
         let inst_id_to_name_map = create_inst_id_to_name_map();
@@ -458,6 +463,24 @@ impl Core {
         for inst_stat in &inst_stats {
             print_filled_with_space(&inst_stat.0.to_string(), 8);
             println!(" {}", inst_stat.1);
+        }
+    }
+
+    fn show_pc_stats(&self) {
+        println!("---------- pc stats ----------");
+        let inst_id_to_name_map = create_inst_id_to_name_map();
+        let mut pc_stats = vec![];
+        for (pc, (count, inst_id)) in self.pc_stats.iter().enumerate() {
+            if *count == 0 {
+                continue;
+            }
+            pc_stats.push((pc, count, inst_id_to_name_map.get(inst_id).unwrap()));
+        }
+        pc_stats.sort_by(|a, b| b.1.cmp(a.1));
+        for pc_stat in &pc_stats {
+            let pc_inst_string = format!("{:>08}({})", pc_stat.0 * 4, pc_stat.2);
+            print_filled_with_space(&pc_inst_string, 25);
+            println!("{}", pc_stat.1);
         }
     }
 
@@ -595,11 +618,14 @@ impl Core {
             }
 
             let instrucion = self.decoded_instructions[self.get_pc() as usize >> 2];
+            let pc = self.get_pc();
             let inst_id = exec_instruction(instrucion, self);
             if props.take_inst_stats {
                 self.update_inst_stats(inst_id);
             }
-
+            if props.take_pc_stats {
+                self.update_pc_stats(pc, inst_id);
+            }
             if cycle_num % 10000000 == 0 {
                 self.show_progress(props.progress_bar_size, &pb);
             }
@@ -646,6 +672,9 @@ impl Core {
         if props.take_inst_stats {
             self.show_inst_stats();
         }
+        if props.take_pc_stats {
+            self.show_pc_stats();
+        }
         if props.show_output {
             self.show_output_result();
         }
@@ -654,6 +683,7 @@ impl Core {
 
 pub struct CoreProps {
     pub take_inst_stats: bool,
+    pub take_pc_stats: bool,
     pub use_cache: bool,
     pub show_output: bool,
     pub progress_bar_size: u64,
