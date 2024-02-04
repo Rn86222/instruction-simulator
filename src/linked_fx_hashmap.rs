@@ -37,13 +37,13 @@ pub mod serde;
 #[cfg(feature = "heapsize_impl")]
 mod heapsize;
 
-use fxhash::{FxBuildHasher, FxHashMap, FxHasher};
+use fxhash::FxHashMap;
 use std::borrow::Borrow;
 use std::cmp::Ordering;
-use std::collections::hash_map::{self, HashMap};
+use std::collections::hash_map::{self};
 use std::fmt;
-use std::hash::{BuildHasher, Hash, Hasher};
-use std::iter;
+use std::hash::{Hash, Hasher};
+// use std::iter;
 use std::marker;
 use std::mem;
 use std::ops::{Index, IndexMut};
@@ -125,6 +125,12 @@ unsafe fn drop_empty_node<K, V>(the_box: *mut Node<K, V>) {
     std::alloc::dealloc(the_box as *mut u8, layout);
 }
 
+impl<K: Hash + Eq, V> Default for LinkedFxHashMap<K, V> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<K: Hash + Eq, V> LinkedFxHashMap<K, V> {
     /// Creates a linked hash map.
     pub fn new() -> Self {
@@ -161,7 +167,7 @@ impl<K, V> LinkedFxHashMap<K, V> {
         let mut cur = (*self.head).next;
         while cur != self.head {
             let next = (*cur).next;
-            Box::from_raw(cur);
+            let _ = Box::from_raw(cur);
             cur = next;
         }
     }
@@ -1287,7 +1293,7 @@ impl<K, V> Drop for IntoIter<K, V> {
         for _ in 0..self.remaining {
             unsafe {
                 let next = (*self.tail).next;
-                Box::from_raw(self.tail);
+                let _ = Box::from_raw(self.tail);
                 self.tail = next;
             }
         }
