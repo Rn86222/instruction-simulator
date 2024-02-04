@@ -4,6 +4,7 @@ mod decoder;
 mod fpu_emulator;
 mod instruction;
 mod instruction_memory;
+mod linked_fx_hashmap;
 mod memory;
 mod register;
 mod sld_loader;

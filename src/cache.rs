@@ -1,5 +1,6 @@
+use crate::linked_fx_hashmap::*;
 use crate::{memory::WORD_SIZE, types::*, utils::*};
-use linked_hash_map::LinkedHashMap;
+// use linked_hash_map::LinkedHashMap;
 
 type CacheValue = [MemoryValue; LINE_SIZE / WORD_SIZE];
 
@@ -19,7 +20,7 @@ pub struct CacheLine {
 }
 
 pub struct Cache {
-    values: [LinkedHashMap<Tag, CacheLine>; LINE_NUM],
+    values: [LinkedFxHashMap<Tag, CacheLine>; LINE_NUM],
     way_num: usize,
     tag_bit_num: usize,
     index_bit_num: usize,
@@ -38,7 +39,7 @@ impl Cache {
     pub fn new() -> Self {
         let mut values = vec![];
         for _ in 0..LINE_NUM {
-            let mut map = LinkedHashMap::with_capacity(WAY_NUM);
+            let mut map = LinkedFxHashMap::new();
             for _ in 0..WAY_NUM {
                 map.insert(
                     std::u32::MAX,
@@ -53,7 +54,7 @@ impl Cache {
             }
             values.push(map);
         }
-        let values: [LinkedHashMap<Tag, CacheLine>; LINE_NUM] = values.try_into().unwrap();
+        let values: [LinkedFxHashMap<Tag, CacheLine>; LINE_NUM] = values.try_into().unwrap();
         let way_num = WAY_NUM;
         let line_size = LINE_SIZE;
         let line_num = LINE_NUM;
