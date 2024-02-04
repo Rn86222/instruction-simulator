@@ -199,16 +199,6 @@ pub fn exec_i_instruction(
         },
         11 => match funct3 {
             0b000 => {
-                // end
-                core.end();
-                END
-            }
-            _ => {
-                panic!("unexpected funct3: {}", funct3)
-            }
-        },
-        14 => match funct3 {
-            0b000 => {
                 // in
                 let value = core.read_int();
                 core.set_int_register(rd as usize, value);
@@ -221,6 +211,16 @@ pub fn exec_i_instruction(
                 core.set_float_register(rd as usize, FloatingPoint::new(i32_to_u32(value)));
                 core.increment_pc();
                 FIN
+            }
+            _ => {
+                panic!("unexpected funct3: {}", funct3)
+            }
+        },
+        14 => match funct3 {
+            0b000 => {
+                // end
+                core.end();
+                END
             }
             _ => {
                 panic!("unexpected funct3: {}", funct3)

@@ -83,7 +83,7 @@ enum InstructionType {
 }
 
 fn instruction_typeof(inst: InstructionValue) -> InstructionType {
-    let op = inst & REG_MASK;
+    let op = inst & OP_MASK;
     match op {
         0 | 1 | 6 | 8 | 11 | 14 => InstructionType::I,
         3 | 9 => InstructionType::R,
@@ -125,10 +125,10 @@ fn decode_s_instruction(inst: InstructionValue) -> Instruction {
 }
 
 fn decode_j_instruction(inst: InstructionValue) -> Instruction {
-    let imm: i32 = ((inst >> 31) << 19) as i32
-        + (((inst >> 13) & 255) << 11) as i32
-        + (((inst >> 20) & 1) << 10) as i32
-        + ((inst >> 21) & 1023) as i32;
+    let imm: i32 = ((inst >> 31) << 18) as i32
+        + (((inst >> 13) & 255) << 10) as i32
+        + (((inst >> 21) & 1) << 9) as i32
+        + ((inst >> 22) & 511) as i32;
     let rd = ((inst >> 4) & REG_MASK) as u8;
     let op = (inst & OP_MASK) as u8;
     Instruction::J(imm, rd, op)
@@ -136,7 +136,7 @@ fn decode_j_instruction(inst: InstructionValue) -> Instruction {
 
 fn decode_b_instruction(inst: InstructionValue) -> Instruction {
     let imm: i16 = ((inst >> 31) << 12) as i16
-        + (((inst >> 7) & 1) << 11) as i16
+        + (((inst >> 4) & 1) << 11) as i16
         + (((inst >> 25) & 63) << 5) as i16
         + ((inst >> 5) & 31) as i16;
     let rs2 = ((inst >> 19) & REG_MASK) as u8;
@@ -147,7 +147,7 @@ fn decode_b_instruction(inst: InstructionValue) -> Instruction {
 }
 
 fn decode_u_instruction(inst: InstructionValue) -> Instruction {
-    let imm: i32 = (inst >> 12) as i32;
+    let imm: i32 = (inst >> 13) as i32;
     let rd = ((inst >> 4) & REG_MASK) as u8;
     let op = (inst & OP_MASK) as u8;
     Instruction::U(imm, rd, op)
