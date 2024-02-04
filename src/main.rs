@@ -4,6 +4,7 @@ mod decoder;
 mod fpu_emulator;
 mod instruction;
 mod instruction_memory;
+mod label_map_loader;
 mod memory;
 mod register;
 mod sld_loader;
@@ -55,6 +56,11 @@ struct Args {
     /// If this flag is set with a file name, the simulator will output framegraph with the given file name.
     #[arg(long)]
     prof: Option<String>,
+
+    /// Label map file.
+    /// If this flag is set with a file name, the simulator will use the given file as label map, and output pc graph.
+    #[arg(long)]
+    label_map: Option<String>,
 }
 
 fn main() {
@@ -70,6 +76,8 @@ fn main() {
     let ppm_file_path = args.ppm.unwrap_or(args.bin.replace(".bin", ".ppm"));
     let sld_file_path = args.sld;
     let prof_file_path = args.prof;
+    let label_map_file_path = args.label_map;
+    let pc_graph_file_path = args.bin.replace(".bin", ".pc.dot");
     let props = CoreProps {
         use_cache,
         take_inst_stats,
@@ -80,6 +88,8 @@ fn main() {
         ppm_file_path,
         sld_file_path,
         prof_file_path,
+        label_map_file_path,
+        pc_graph_file_path,
     };
     core.run(props);
 }

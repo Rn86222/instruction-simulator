@@ -1,5 +1,8 @@
 use indicatif::{ProgressBar, ProgressStyle};
 // use std::collections::HashMap;
+use fxhash::FxHashMap;
+use petgraph::dot::Dot;
+use petgraph::Graph;
 use std::fs::File;
 use std::io::Read;
 use std::io::Write;
@@ -11,6 +14,7 @@ use crate::decoder::*;
 use crate::fpu_emulator::*;
 use crate::instruction::*;
 use crate::instruction_memory::*;
+use crate::label_map_loader::*;
 use crate::memory::*;
 use crate::register::*;
 use crate::sld_loader::*;
@@ -38,6 +42,10 @@ pub struct Core {
     float_registers: [FloatRegister; FLOAT_REGISTER_SIZE],
     pc: Address,
     pc_stats: [(usize, usize); 100000],
+    pc_graph: Graph<String, usize>,
+    pc_to_node_id_map: FxHashMap<Address, petgraph::graph::NodeIndex>,
+    current_pc_node_id: petgraph::graph::NodeIndex,
+    create_pc_graph: bool,
     inst_stats: [usize; 256],
     int_registers_access_counter: Vec<usize>,
     float_registers_access_counter: Vec<usize>,
@@ -68,6 +76,10 @@ impl Core {
         let float_registers = [FloatRegister::new(); FLOAT_REGISTER_SIZE];
         let pc = 0;
         let pc_stats = [(0, 0); 100000];
+        let mut pc_graph = Graph::new();
+        let pc_to_node_id_map = FxHashMap::default();
+        let current_node_id = pc_graph.add_node("START".to_string());
+        let create_pc_graph = false;
         let inst_stats = [0; 256];
         let int_registers_access_counter = vec![0; INT_REGISTER_SIZE];
         let float_registers_access_counter = vec![0; FLOAT_REGISTER_SIZE];
@@ -95,6 +107,10 @@ impl Core {
             float_registers,
             pc,
             pc_stats,
+            pc_graph,
+            pc_to_node_id_map,
+            current_pc_node_id: current_node_id,
+            create_pc_graph,
             inst_stats,
             int_registers_access_counter,
             float_registers_access_counter,
@@ -131,6 +147,9 @@ impl Core {
 
     pub fn set_pc(&mut self, new_pc: Address) {
         self.pc = new_pc;
+        if self.create_pc_graph {
+            self.update_pc_graph();
+        }
     }
 
     fn increment_instruction_count(&mut self) {
@@ -522,6 +541,12 @@ impl Core {
         }
     }
 
+    fn output_pc_graph(&self, pc_graph_file_path: &str) {
+        let mut f = std::fs::File::create(pc_graph_file_path).unwrap();
+        let dot_str = format!("{:?}", Dot::with_config(&self.pc_graph, &[]));
+        f.write_all(dot_str.as_bytes()).unwrap();
+    }
+
     fn load_sld_file(&mut self, path: &str) {
         self.sld_vec = load_sld_file(path);
     }
@@ -563,6 +588,27 @@ impl Core {
         }
     }
 
+    fn load_label_map_file(&mut self, label_map_file: &str) {
+        let label_map = load_label_map_file(label_map_file);
+        for (addr, label) in label_map {
+            let node_id = self.pc_graph.add_node(label.clone());
+            self.pc_to_node_id_map.insert(addr, node_id);
+        }
+    }
+
+    fn update_pc_graph(&mut self) {
+        let new_node_id = self.pc_to_node_id_map.get(&self.get_pc());
+        if let Some(node_id) = new_node_id {
+            if let Some(edge_id) = self.pc_graph.find_edge(self.current_pc_node_id, *node_id) {
+                let edge = self.pc_graph.edge_weight_mut(edge_id).unwrap();
+                *edge += 1;
+            } else {
+                self.pc_graph.add_edge(self.current_pc_node_id, *node_id, 1);
+            }
+            self.current_pc_node_id = *node_id;
+        }
+    }
+
     fn init(&mut self) {
         self.set_int_register(RA, INSTRUCTION_MEMORY_SIZE as Int);
         self.set_int_register(SP, MEMORY_SIZE as Int);
@@ -592,6 +638,10 @@ impl Core {
         self.init();
         self.load_bin_file(&props.bin_file_path);
         self.load_sld_file(&props.sld_file_path);
+        if let Some(label_map_file) = &props.label_map_file_path {
+            self.load_label_map_file(label_map_file);
+            self.create_pc_graph = true;
+        }
         self.decode_all_instructions();
 
         let pb = ProgressBar::new(props.progress_bar_size);
@@ -678,6 +728,9 @@ impl Core {
         if props.show_output {
             self.show_output_result();
         }
+        if self.create_pc_graph {
+            self.output_pc_graph(&props.pc_graph_file_path);
+        }
     }
 }
 
@@ -691,4 +744,6 @@ pub struct CoreProps {
     pub ppm_file_path: String,
     pub sld_file_path: String,
     pub prof_file_path: Option<String>,
+    pub label_map_file_path: Option<String>,
+    pub pc_graph_file_path: String,
 }
