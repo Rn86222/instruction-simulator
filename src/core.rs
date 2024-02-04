@@ -17,8 +17,8 @@ use crate::sld_loader::*;
 use crate::types::*;
 use crate::utils::*;
 
-const INT_REGISTER_SIZE: usize = 32;
-const FLOAT_REGISTER_SIZE: usize = 32;
+const INT_REGISTER_SIZE: usize = 64;
+const FLOAT_REGISTER_SIZE: usize = 64;
 // const IO_ADDRESS: Address = 2147483648;
 
 const CACHE_MISS_STALL: usize = 108 * 120;
