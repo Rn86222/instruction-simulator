@@ -37,7 +37,7 @@ pub struct Core {
     int_registers: [IntRegister; INT_REGISTER_SIZE],
     float_registers: [FloatRegister; FLOAT_REGISTER_SIZE],
     pc: Address,
-    pc_stats: [(usize, usize); 100000],
+    pc_stats: [(usize, usize); 1000000],
     inst_stats: [usize; 256],
     int_registers_access_counter: Vec<usize>,
     float_registers_access_counter: Vec<usize>,
@@ -67,7 +67,7 @@ impl Core {
         let int_registers = [IntRegister::new(); INT_REGISTER_SIZE];
         let float_registers = [FloatRegister::new(); FLOAT_REGISTER_SIZE];
         let pc = 0;
-        let pc_stats = [(0, 0); 100000];
+        let pc_stats = [(0, 0); 1000000];
         let inst_stats = [0; 256];
         let int_registers_access_counter = vec![0; INT_REGISTER_SIZE];
         let float_registers_access_counter = vec![0; FLOAT_REGISTER_SIZE];
