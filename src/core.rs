@@ -9,13 +9,14 @@ use std::io::Write;
 use std::time::Instant;
 use std::vec;
 
-use crate::cache::*;
+// use crate::cache::*;
 use crate::decoder::*;
 use crate::fpu_emulator::*;
 use crate::instruction::*;
 use crate::instruction_memory::*;
 use crate::label_map_loader::*;
 use crate::memory::*;
+use crate::pseudo_lru_cache::*;
 use crate::register::*;
 use crate::sld_loader::*;
 use crate::types::*;
@@ -32,7 +33,7 @@ const BAUD_RATE: usize = 115200;
 
 pub struct Core {
     memory: Memory,
-    cache: Cache,
+    cache: PseudoLRUCache,
     memory_access_count: usize,
     cache_hit_count: usize,
     load_cache_miss_count: usize,
@@ -41,7 +42,7 @@ pub struct Core {
     int_registers: [IntRegister; INT_REGISTER_SIZE],
     float_registers: [FloatRegister; FLOAT_REGISTER_SIZE],
     pc: Address,
-    pc_stats: [(usize, usize); 100000],
+    pc_stats: [(usize, usize); 1000000],
     pc_graph: Graph<String, usize>,
     pc_to_node_id_map: FxHashMap<Address, petgraph::graph::NodeIndex>,
     current_pc_node_id: petgraph::graph::NodeIndex,
@@ -66,7 +67,7 @@ pub struct Core {
 impl Core {
     pub fn new() -> Self {
         let memory = Memory::new();
-        let cache = Cache::new();
+        let cache = PseudoLRUCache::new();
         let memory_access_count = 0;
         let cache_hit_count = 0;
         let load_cache_miss_count = 0;
@@ -75,7 +76,7 @@ impl Core {
         let int_registers = [IntRegister::new(); INT_REGISTER_SIZE];
         let float_registers = [FloatRegister::new(); FLOAT_REGISTER_SIZE];
         let pc = 0;
-        let pc_stats = [(0, 0); 100000];
+        let pc_stats = [(0, 0); 1000000];
         let mut pc_graph = Graph::new();
         let pc_to_node_id_map = FxHashMap::default();
         let current_node_id = pc_graph.add_node("START".to_string());

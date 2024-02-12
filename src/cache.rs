@@ -34,6 +34,7 @@ pub enum CacheAccess {
     Miss,
 }
 
+#[allow(dead_code)]
 impl Cache {
     pub fn new() -> Self {
         let mut values = vec![];
