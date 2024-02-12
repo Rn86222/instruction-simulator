@@ -12,6 +12,7 @@ mod types;
 mod utils;
 use crate::core::*;
 use clap::Parser;
+mod pseudo_lru_cache;
 
 /// Simulator for CPUEX-Group2 computer
 #[derive(Parser, Debug)]
