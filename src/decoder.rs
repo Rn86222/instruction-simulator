@@ -83,6 +83,9 @@ enum InstructionType {
 }
 
 fn instruction_typeof(inst: InstructionValue) -> InstructionType {
+    if inst == 0 {
+        return InstructionType::Other;
+    }
     let op = inst & OP_MASK;
     match op {
         0 | 1 | 6 | 8 | 11 | 14 => InstructionType::I,
