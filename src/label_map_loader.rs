@@ -16,6 +16,7 @@ pub fn load_label_map_file(file_path: &str) -> FxHashMap<Address, String> {
                 || label.starts_with("bge")
                 || label.starts_with("ble")
                 || label.starts_with("fble")
+                || label.starts_with("fbeq")
             {
                 continue;
             }
