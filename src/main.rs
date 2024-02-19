@@ -27,6 +27,7 @@ struct Args {
     sld: String,
 
     /// Name of the output ppm file.
+    /// By default, the simulator will output a ppm file with the same name as the input binary file.
     #[arg(long)]
     ppm: Option<String>,
 
@@ -44,7 +45,7 @@ struct Args {
     pc_stats: bool,
 
     /// Show output.
-    #[arg(short, long)]
+    #[arg(long)]
     show_output: bool,
 
     /// Show progress bar.
