@@ -1,3 +1,6 @@
+default:
+	ulimit -s unlimited && cargo run --release -- --bin main.bin --inst-stats --pc-stats
+
 minrt_128:
 	ulimit -s unlimited && cargo run --release -- --progress-bar-size 49167 --bin ./minrt_128.bin --inst-stats --pc-stats --sld ./sld/contest.sld > ./minrt_128.result
 
