@@ -42,7 +42,7 @@ pub struct Core {
     int_registers: [IntRegister; INT_REGISTER_SIZE],
     float_registers: [FloatRegister; FLOAT_REGISTER_SIZE],
     pc: Address,
-    pc_stats: [(usize, usize); 1000000],
+    pc_stats: [(usize, InstructionId); 1000000],
     pc_graph: Graph<String, usize>,
     pc_to_node_id_map: FxHashMap<Address, petgraph::graph::NodeIndex>,
     current_pc_node_id: petgraph::graph::NodeIndex,
@@ -76,7 +76,7 @@ impl Core {
         let int_registers = [IntRegister::new(); INT_REGISTER_SIZE];
         let float_registers = [FloatRegister::new(); FLOAT_REGISTER_SIZE];
         let pc = 0;
-        let pc_stats = [(0, 0); 1000000];
+        let pc_stats = [(0, InstructionId::End); 1000000];
         let mut pc_graph = Graph::new();
         let pc_to_node_id_map = FxHashMap::default();
         let current_node_id = pc_graph.add_node("START".to_string());
@@ -238,108 +238,6 @@ impl Core {
         }
     }
 
-    // #[allow(dead_code)]
-    // pub fn load_byte(&mut self, addr: Address) -> Byte {
-    //     self.increment_memory_access_count();
-    //     let cache_access = self.cache.get_ubyte(addr);
-    //     match cache_access {
-    //         CacheAccess::HitUByte(value) => {
-    //             self.increment_cache_hit_count();
-    //             u8_to_i8(value) as Byte
-    //         }
-    //         CacheAccess::Miss => {
-    //             self.increment_load_cache_miss_count();
-    //             let value = self.memory.load_byte(addr);
-    //             self.process_cache_miss(addr);
-    //             value
-    //         }
-    //         _ => {
-    //             panic!("invalid cache access");
-    //         }
-    //     }
-    // }
-
-    // #[allow(dead_code)]
-    // pub fn load_ubyte(&mut self, addr: Address) -> UByte {
-    //     self.increment_memory_access_count();
-    //     let cache_access = self.cache.get_ubyte(addr);
-    //     match cache_access {
-    //         CacheAccess::HitUByte(value) => {
-    //             self.increment_cache_hit_count();
-    //             value
-    //         }
-    //         CacheAccess::Miss => {
-    //             self.increment_load_cache_miss_count();
-    //             let value = self.memory.load_ubyte(addr);
-    //             self.process_cache_miss(addr);
-    //             value
-    //         }
-    //         _ => {
-    //             panic!("invalid cache access");
-    //         }
-    //     }
-    // }
-
-    // #[allow(dead_code)]
-    // pub fn store_byte(&mut self, addr: Address, value: Byte) {
-    //     self.increment_memory_access_count();
-    //     let cache_access = self.cache.set_ubyte(addr, i8_to_u8(value));
-    //     match cache_access {
-    //         CacheAccess::HitSet => {
-    //             self.increment_cache_hit_count();
-    //         }
-    //         CacheAccess::Miss => {
-    //             self.memory.store_byte(addr, value);
-    //             self.process_cache_miss(addr);
-    //         }
-    //         _ => {
-    //             panic!("invalid cache access");
-    //         }
-    //     }
-    // }
-
-    // #[allow(dead_code)]
-    // pub fn load_half(&mut self, addr: Address) -> Half {
-    //     self.increment_memory_access_count();
-    //     let cache_access = self.cache.get_uhalf(addr);
-    //     match cache_access {
-    //         CacheAccess::HitUHalf(value) => {
-    //             self.increment_cache_hit_count();
-    //             u16_to_i16(value)
-    //         }
-    //         CacheAccess::Miss => {
-    //             self.increment_load_cache_miss_count();
-    //             let value = self.memory.load_half(addr);
-    //             self.process_cache_miss(addr);
-    //             value
-    //         }
-    //         _ => {
-    //             panic!("invalid cache access");
-    //         }
-    //     }
-    // }
-
-    // #[allow(dead_code)]
-    // pub fn load_uhalf(&mut self, addr: Address) -> UHalf {
-    //     self.increment_memory_access_count();
-    //     let cache_access = self.cache.get_uhalf(addr);
-    //     match cache_access {
-    //         CacheAccess::HitUHalf(value) => {
-    //             self.increment_cache_hit_count();
-    //             value
-    //         }
-    //         CacheAccess::Miss => {
-    //             self.increment_load_cache_miss_count();
-    //             let value = self.memory.load_uhalf(addr);
-    //             self.process_cache_miss(addr);
-    //             value
-    //         }
-    //         _ => {
-    //             panic!("invalid cache access");
-    //         }
-    //     }
-    // }
-
     pub fn read_int(&mut self) -> Word {
         let value = self.sld_vec[self.sld_counter].parse::<i32>().unwrap();
         self.sld_counter += 1;
@@ -354,11 +252,6 @@ impl Core {
     }
 
     pub fn load_word(&mut self, addr: Address) -> Word {
-        // if addr == IO_ADDRESS {
-        //     let value = self.sld_vec[self.sld_counter].parse::<i32>().unwrap();
-        //     self.sld_counter += 1;
-        //     return value;
-        // }
         self.increment_memory_access_count();
         if self.use_cache {
             let cache_access = self.cache.get_word(addr);
@@ -382,44 +275,16 @@ impl Core {
         }
     }
 
-    // pub fn load_word_fp(&mut self, addr: Address) -> Word {
-    //     if addr == IO_ADDRESS {
-    //         let value = self.sld_vec[self.sld_counter].parse::<f32>().unwrap();
-    //         let fp = FloatingPoint::new_f32(value);
-    //         self.sld_counter += 1;
-    //         u32_to_i32(fp.get_32_bits())
-    //     } else {
-    //         self.load_word(addr)
-    //     }
-    // }
-
-    // #[allow(dead_code)]
-    // pub fn store_half(&mut self, addr: Address, value: Half) {
-    //     self.increment_memory_access_count();
-    //     let cache_access = self.cache.set_uhalf(addr, i16_to_u16(value));
-    //     match cache_access {
-    //         CacheAccess::HitSet => {
-    //             self.increment_cache_hit_count();
-    //         }
-    //         CacheAccess::Miss => {
-    //             self.memory.store_half(addr, value);
-    //             self.process_cache_miss(addr);
-    //         }
-    //         _ => {
-    //             panic!("invalid cache access");
-    //         }
-    //     }
-    // }
-
     pub fn print_char(&mut self, value: Word) {
         self.output.push(value as u8);
     }
 
+    pub fn print_int(&mut self, value: Word) {
+        self.output
+            .append(&mut value.to_string().as_bytes().to_vec());
+    }
+
     pub fn store_word(&mut self, addr: Address, value: Word) {
-        // if addr == IO_ADDRESS {
-        //     self.output.push(value as u8);
-        //     return;
-        // }
         self.increment_memory_access_count();
         if self.use_cache {
             let cache_access = self.cache.set_word(addr, value);
@@ -460,24 +325,24 @@ impl Core {
         }
     }
 
-    pub fn update_inst_stats(&mut self, inst_id: usize) {
-        self.inst_stats[inst_id] += 1;
+    pub fn update_inst_stats(&mut self, inst_id: InstructionId) {
+        self.inst_stats[inst_id as usize] += 1;
     }
 
-    pub fn update_pc_stats(&mut self, pc: u32, inst_id: usize) {
+    pub fn update_pc_stats(&mut self, pc: u32, inst_id: InstructionId) {
         self.pc_stats[(pc >> 2) as usize].0 += 1;
         self.pc_stats[(pc >> 2) as usize].1 = inst_id;
     }
 
     fn show_inst_stats(&self) {
         println!("---------- inst stats ----------");
-        let inst_id_to_name_map = create_inst_id_to_name_map();
+        // let inst_id_to_name_map = create_inst_id_to_name_map();
         let mut inst_stats = vec![];
         for (id, inst_count) in self.inst_stats.iter().enumerate() {
             if *inst_count == 0 {
                 continue;
             }
-            inst_stats.push((inst_id_to_name_map.get(&id).unwrap(), inst_count));
+            inst_stats.push((INST_ID_TO_NAME[id], inst_count));
         }
         inst_stats.sort_by(|a, b| b.1.cmp(a.1));
         for inst_stat in &inst_stats {
@@ -488,13 +353,12 @@ impl Core {
 
     fn show_pc_stats(&self) {
         println!("---------- pc stats ----------");
-        let inst_id_to_name_map = create_inst_id_to_name_map();
         let mut pc_stats = vec![];
         for (pc, (count, inst_id)) in self.pc_stats.iter().enumerate() {
             if *count == 0 {
                 continue;
             }
-            pc_stats.push((pc, count, inst_id_to_name_map.get(inst_id).unwrap()));
+            pc_stats.push((pc, count, INST_ID_TO_NAME[*inst_id as usize]));
         }
         pc_stats.sort_by(|a, b| b.1.cmp(a.1));
         for pc_stat in &pc_stats {
