@@ -701,7 +701,8 @@ impl Core {
 
         let cycle_num = self.instruction_count
             + self.flush_counter as u128 * FLUSH_STALL as u128
-            + self.load_cache_miss_count as u128 * CACHE_MISS_STALL as u128;
+            + self.load_cache_miss_count as u128 * CACHE_MISS_STALL as u128
+            + self.fpu_stall_counter as u128;
         let cycle_time =
             cycle_num as f64 / FREQUENCY as f64 + self.output.len() as f64 * 8. / BAUD_RATE as f64;
 
