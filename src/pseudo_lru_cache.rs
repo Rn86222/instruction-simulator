@@ -27,8 +27,6 @@ pub struct PseudoLRUCache {
 
 pub enum CacheAccess {
     HitSet,
-    // HitUByte(UByte),
-    // HitUHalf(UHalf),
     HitWord(Word),
     Miss,
 }
@@ -50,7 +48,6 @@ impl PseudoLRUCache {
             values.push(line.try_into().unwrap());
         }
         let values: [[CacheLine; WAY_NUM]; LINE_NUM] = values.try_into().unwrap();
-        // let way_num = WAY_NUM;
         let line_size = LINE_SIZE;
         let line_num = LINE_NUM;
         let index_bit_num = (line_num as u32).trailing_zeros() as usize;
@@ -58,7 +55,6 @@ impl PseudoLRUCache {
         let tag_bit_num = 32 - index_bit_num - offset_bit_num;
         PseudoLRUCache {
             values,
-            // way_num,
             tag_bit_num,
             index_bit_num,
             offset_bit_num,
@@ -135,43 +131,6 @@ impl PseudoLRUCache {
         cache_line.valid = true;
     }
 
-    // #[allow(dead_code)]
-    // pub fn get_ubyte(&mut self, addr: Address) -> CacheAccess {
-    //     let (tag, index, offset) = self.get_status(addr);
-    //     let cache_line = self.values[index].get_refresh(&tag);
-    //     match cache_line {
-    //         Some(cache_line) => {
-    //             if !cache_line.valid {
-    //                 return CacheAccess::Miss;
-    //             }
-    //             let value = cache_line.value[offset];
-    //             Self::update_on_get(cache_line);
-    //             CacheAccess::HitUByte(value)
-    //         }
-    //         None => CacheAccess::Miss,
-    //     }
-    // }
-
-    // #[allow(dead_code)]
-    // pub fn get_uhalf(&mut self, addr: Address) -> CacheAccess {
-    //     let (tag, index, offset) = self.get_status(addr);
-    //     let cache_line = self.values[index].get_refresh(&tag);
-    //     match cache_line {
-    //         Some(cache_line) => {
-    //             if !cache_line.valid {
-    //                 return CacheAccess::Miss;
-    //             }
-    //             let mut value: UHalf = 0;
-    //             for i in 0..2 {
-    //                 value += (cache_line.value[offset + i] as UHalf) << (8 * i);
-    //             }
-    //             Self::update_on_get(cache_line);
-    //             CacheAccess::HitUHalf(value)
-    //         }
-    //         None => CacheAccess::Miss,
-    //     }
-    // }
-
     pub fn get_word(&mut self, addr: Address) -> CacheAccess {
         let (tag, index, offset) = self.get_status(addr);
         let cache_line = self.get_cache_line_refresh(index, tag);
@@ -180,10 +139,6 @@ impl PseudoLRUCache {
                 if !cache_line.valid {
                     return CacheAccess::Miss;
                 }
-                // let mut value: u32 = 0;
-                // for i in 0..4 {
-                //     value += (cache_line.value[offset + i] as u32) << (8 * i);
-                // }
                 Self::update_on_get(cache_line);
                 let value = cache_line.value[offset >> 2];
                 CacheAccess::HitWord(u32_to_i32(value))
@@ -199,8 +154,6 @@ impl PseudoLRUCache {
     ) -> Option<[(Address, MemoryValue); LINE_SIZE / WORD_SIZE]> {
         let tag = self.get_tag(addr);
         let index = self.get_index(addr);
-        // self.check_accessed_tag(index);
-        // println!("set line {} {}", tag, index);
         let cache_line = self.get_cache_line(index, tag);
         assert!(cache_line.is_none());
 
@@ -266,42 +219,6 @@ impl PseudoLRUCache {
             None
         }
     }
-
-    // #[allow(dead_code)]
-    // pub fn set_ubyte(&mut self, addr: Address, value: UByte) -> CacheAccess {
-    //     let (tag, index, offset) = self.get_status(addr);
-    //     let cache_line = self.values[index].get_refresh(&tag);
-    //     match cache_line {
-    //         Some(cache_line) => {
-    //             if !cache_line.valid {
-    //                 return CacheAccess::Miss;
-    //             }
-    //             cache_line.value[offset] = value;
-    //             Self::update_on_set(cache_line);
-    //             CacheAccess::HitSet
-    //         }
-    //         None => CacheAccess::Miss,
-    //     }
-    // }
-
-    // #[allow(dead_code)]
-    // pub fn set_uhalf(&mut self, addr: Address, value: UHalf) -> CacheAccess {
-    //     let (tag, index, offset) = self.get_status(addr);
-    //     let cache_line = self.values[index].get_refresh(&tag);
-    //     match cache_line {
-    //         Some(cache_line) => {
-    //             if !cache_line.valid {
-    //                 return CacheAccess::Miss;
-    //             }
-    //             for i in 0..2 {
-    //                 cache_line.value[offset + i] = ((value >> (i * 8)) & 0xff) as UByte;
-    //             }
-    //             Self::update_on_set(cache_line);
-    //             CacheAccess::HitSet
-    //         }
-    //         None => CacheAccess::Miss,
-    //     }
-    // }
 
     pub fn set_word(&mut self, addr: Address, value: Word) -> CacheAccess {
         let (tag, index, offset) = self.get_status(addr);
