@@ -1,7 +1,3 @@
-// pub type Byte = i8;
-// pub type UByte = u8;
-// pub type Half = i16;
-// pub type UHalf = u16;
 pub type Word = i32;
 pub type Int = i32;
 pub type MemoryValue = u32;
@@ -17,5 +13,4 @@ pub type Rd = u8;
 pub type Funct3 = u8;
 pub type Funct7 = u8;
 pub type Op = u8;
-// pub type Fd = u8;
 pub type InstructionCount = u128;
