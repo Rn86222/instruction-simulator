@@ -463,6 +463,56 @@ pub fn int_to_fp(x: Int) -> FloatingPoint {
     }
 }
 
+#[allow(dead_code)]
+fn sin(x: FloatingPoint) -> FloatingPoint {
+    let x2 = x * x;
+    let x4 = x2 * x2;
+    x - (x2 * x) * FloatingPoint::new_f32(0.16666668)
+        + (x4 * x) * FloatingPoint::new_f32(0.008332824)
+        - (x4 * x2 * x) * FloatingPoint::new_f32(0.00019587841)
+}
+
+#[allow(dead_code)]
+fn cos(x: FloatingPoint) -> FloatingPoint {
+    let x2 = x * x;
+    let x4 = x2 * x2;
+    FloatingPoint::new_f32(1.) - (x2 * FloatingPoint::new_f32(0.5))
+        + (x4 * FloatingPoint::new_f32(0.04166368))
+        - (x4 * x2 * FloatingPoint::new_f32(0.0013695068))
+}
+
+#[allow(dead_code)]
+fn atan_sub(x: FloatingPoint) -> FloatingPoint {
+    let x2 = x * x;
+    let x4 = x2 * x2;
+    let x8 = x4 * x4;
+    x - (x2 * x * FloatingPoint::new_f32(0.3333333)) + (x4 * x * FloatingPoint::new_f32(0.2))
+        - (x4 * x2 * x * FloatingPoint::new_f32(0.14285715))
+        + (x8 * x * FloatingPoint::new_f32(0.111111104))
+        - (x8 * x2 * x * FloatingPoint::new_f32(0.08976446))
+        + (x8 * x4 * x * FloatingPoint::new_f32(0.060035485))
+}
+
+#[allow(dead_code)]
+fn atan(x: FloatingPoint, inv_map: &InvMap) -> FloatingPoint {
+    let pi = FloatingPoint::new_f32(std::f32::consts::PI);
+    if x < FloatingPoint::new_f32(0.) {
+        -atan_sub(-x)
+    } else if x < FloatingPoint::new_f32(0.4375) {
+        atan_sub(x)
+    } else if x < FloatingPoint::new_f32(2.4375) {
+        div_fp(pi, FloatingPoint::new_f32(4.), inv_map)
+            + atan_sub(div_fp(
+                x - FloatingPoint::new_f32(1.),
+                x + FloatingPoint::new_f32(1.),
+                inv_map,
+            ))
+    } else {
+        div_fp(pi, FloatingPoint::new_f32(2.), inv_map)
+            - atan_sub(div_fp(FloatingPoint::new_f32(1.), x, inv_map))
+    }
+}
+
 impl Neg for FloatingPoint {
     type Output = Self;
     fn neg(self) -> Self {
@@ -849,6 +899,130 @@ mod tests {
                 next_larger,
                 correct_result
             );
+        }
+        println!();
+    }
+
+    #[test]
+    fn test_sin() {
+        let inv_map = create_inv_map();
+        let pi_over_4 = div_fp(
+            FloatingPoint::new_f32(std::f32::consts::PI),
+            FloatingPoint::new_f32(4.),
+            &inv_map,
+        );
+        let mut x = 0.;
+        let absolute_eps = 2_f64.powf(-126.);
+        while FloatingPoint::new_f32(x) <= pi_over_4 {
+            let correct_result = (x as f64).sin();
+            let result = sin(FloatingPoint::new_f32(x));
+            let abs_diff = (correct_result - result.get_f32_value() as f64).abs();
+            if abs_diff >= absolute_eps {
+                let ulp_of_result = if (correct_result as f32) > result.get_f32_value() {
+                    result
+                        .get_f32_value()
+                        .next_after(result.get_f32_value() + 1.)
+                        - result.get_f32_value()
+                } else {
+                    result
+                        .get_f32_value()
+                        .next_after(result.get_f32_value() - 1.)
+                        - result.get_f32_value()
+                };
+                let mut ulp_count: i32 = 0;
+                while correct_result as f32
+                    != result.get_f32_value() + ulp_count as f32 * ulp_of_result
+                {
+                    ulp_count += 1;
+                    if ulp_count > 5 {
+                        panic!(
+                            "x: {}, correct_result: {}, result: {}",
+                            x,
+                            correct_result,
+                            result.get_f32_value()
+                        );
+                    }
+                }
+            }
+            x = x.next_after(x + 0.01);
+        }
+    }
+
+    #[test]
+    fn test_cos() {
+        let inv_map = create_inv_map();
+        let pi_over_4 = div_fp(
+            FloatingPoint::new_f32(std::f32::consts::PI),
+            FloatingPoint::new_f32(4.),
+            &inv_map,
+        );
+        let mut x = 0.;
+        let absolute_eps = 2_f64.powf(-126.);
+        while FloatingPoint::new_f32(x) <= pi_over_4 {
+            let correct_result = (x as f64).cos();
+            let result = cos(FloatingPoint::new_f32(x));
+            let abs_diff = (correct_result - result.get_f32_value() as f64).abs();
+            if abs_diff >= absolute_eps {
+                let ulp_of_result = if (correct_result as f32) > result.get_f32_value() {
+                    result
+                        .get_f32_value()
+                        .next_after(result.get_f32_value() + 1.)
+                        - result.get_f32_value()
+                } else {
+                    result
+                        .get_f32_value()
+                        .next_after(result.get_f32_value() - 1.)
+                        - result.get_f32_value()
+                };
+                let mut ulp_count: i32 = 0;
+                while correct_result as f32
+                    != result.get_f32_value() + ulp_count as f32 * ulp_of_result
+                {
+                    ulp_count += 1;
+                    if ulp_count > 5 {
+                        panic!(
+                            "x: {}, correct_result: {}, result: {}",
+                            x,
+                            correct_result,
+                            result.get_f32_value()
+                        );
+                    }
+                }
+            }
+            x = x.next_after(x + 0.01);
+        }
+    }
+
+    #[test]
+    fn test_atan() {
+        let inv_map = create_inv_map();
+        let relative_eps = 2_f64.powf(-20.);
+        let absolute_eps = 2_f64.powf(-126.);
+        let s = 0;
+        let min_e = 0;
+        let max_e = 254;
+        let min_m = 0;
+        let max_m = 0x7fffff;
+        for e in min_e..=max_e {
+            print!(
+                "\r{:.0}%",
+                (e - min_e) as f32 / (max_e - min_e + 1) as f32 * 100.0
+            );
+            stdout().flush().unwrap();
+            for m in min_m..=max_m {
+                let op = (s << 31) + (e << 23) + m;
+                let fp = FloatingPoint::new(op);
+                let correct_result: f64 = (f32::from_bits(op) as f64).atan();
+                let result = atan(fp, &inv_map);
+                let abs_diff = (correct_result - result.get_f32_value() as f64).abs();
+                assert!(
+                    abs_diff < relative_eps * correct_result.abs() || abs_diff < absolute_eps,
+                    "op: {}, correct_result: {}, result: {}",
+                    f32::from_bits(op),
+                    correct_result,
+                    result.get_f32_value(),
+                );
+            }
         }
         println!();
     }
