@@ -6,16 +6,16 @@ use crate::fpu_emulator::*;
 use crate::types::*;
 use crate::utils::*;
 
-const FADD_STALL: usize = 2;
-const FSUB_STALL: usize = 2;
-const FMUL_STALL: usize = 2;
-const FDIV_STALL: usize = 10;
-const FSQRT_STALL: usize = 7;
-const FLT_STALL: usize = 0;
-const FEQ_STALL: usize = 0;
-const FLE_STALL: usize = 0;
-const FCVTSW_STALL: usize = 1;
-const FCVTWS_STALL: usize = 1;
+const FADD_STALL: usize = 4;
+const FSUB_STALL: usize = 5;
+const FMUL_STALL: usize = 4;
+const FDIV_STALL: usize = 12;
+const FSQRT_STALL: usize = 9;
+const FLT_STALL: usize = 1;
+const FEQ_STALL: usize = 1;
+const FLE_STALL: usize = 1;
+const FCVTSW_STALL: usize = 3;
+const FCVTWS_STALL: usize = 2;
 
 #[derive(Clone, Copy)]
 pub enum InstructionId {

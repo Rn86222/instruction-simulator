@@ -26,17 +26,19 @@ const INT_REGISTER_SIZE: usize = 64;
 const FLOAT_REGISTER_SIZE: usize = 64;
 // const IO_ADDRESS: Address = 2147483648;
 
-const CACHE_MISS_STALL: usize = 108 * 120;
+const CACHE_MISS_STALL: usize = 60;
+const CACHE_HIT_STALL: usize = 1;
 const FLUSH_STALL: usize = 3;
-const FREQUENCY: usize = 120 * 1000000;
-const BAUD_RATE: usize = 115200;
+const FREQUENCY: usize = 65 * 1000000;
+#[allow(dead_code)]
+const BAUD_RATE: usize = 11520;
 
 pub struct Core {
     memory: Memory,
     cache: PseudoLRUCache,
     memory_access_count: usize,
     cache_hit_count: usize,
-    load_cache_miss_count: usize,
+    cache_miss_count: usize,
     instruction_memory: InstructionMemory,
     instruction_count: InstructionCount,
     int_registers: [IntRegister; INT_REGISTER_SIZE],
@@ -70,7 +72,7 @@ impl Core {
         let cache = PseudoLRUCache::new();
         let memory_access_count = 0;
         let cache_hit_count = 0;
-        let load_cache_miss_count = 0;
+        let cache_miss_count = 0;
         let instruction_memory = InstructionMemory::new();
         let instruction_count = 0;
         let int_registers = [IntRegister::new(); INT_REGISTER_SIZE];
@@ -101,7 +103,7 @@ impl Core {
             cache,
             memory_access_count,
             cache_hit_count,
-            load_cache_miss_count,
+            cache_miss_count,
             instruction_memory,
             instruction_count,
             int_registers,
@@ -225,8 +227,8 @@ impl Core {
         self.flush_counter += 1;
     }
 
-    fn increment_load_cache_miss_count(&mut self) {
-        self.load_cache_miss_count += 1;
+    fn increment_cache_miss_count(&mut self) {
+        self.cache_miss_count += 1;
     }
 
     fn process_cache_miss(&mut self, addr: Address) {
@@ -261,7 +263,7 @@ impl Core {
                     value
                 }
                 CacheAccess::Miss => {
-                    self.increment_load_cache_miss_count();
+                    self.increment_cache_miss_count();
                     let value = self.memory.load_word(addr);
                     self.process_cache_miss(addr);
                     value
@@ -293,6 +295,7 @@ impl Core {
                     self.increment_cache_hit_count();
                 }
                 CacheAccess::Miss => {
+                    self.increment_cache_miss_count();
                     self.memory.store_word(addr, value);
                     self.process_cache_miss(addr);
                 }
@@ -482,7 +485,7 @@ impl Core {
     fn show_progress(&self, progress_bar_size: u64, pb: &ProgressBar) {
         if progress_bar_size == 0 {
             eprint!(
-                "\r{} {:>08} pc: {:>06} sp: {:>010}",
+                "\rinst count: {} output: {:>08} pc: {:>06} sp: {:>010}",
                 self.instruction_count,
                 self.output.len(),
                 self.get_pc(),
@@ -565,15 +568,17 @@ impl Core {
 
         let cycle_num = self.instruction_count
             + self.flush_counter as u128 * FLUSH_STALL as u128
-            + self.load_cache_miss_count as u128 * CACHE_MISS_STALL as u128
+            + self.cache_miss_count as u128 * CACHE_MISS_STALL as u128
+            + self.cache_hit_count as u128 * CACHE_HIT_STALL as u128
             + self.fpu_stall_counter as u128;
-        let cycle_time =
+        let predicted_time =
             cycle_num as f64 / FREQUENCY as f64 + self.output.len() as f64 * 8. / BAUD_RATE as f64;
+        // let predicted_time = cycle_num as f64 / FREQUENCY as f64;
 
         println!("flush count: {}", self.flush_counter);
-        println!("load cache miss count: {}", self.load_cache_miss_count);
+        println!("cache miss count: {}", self.cache_miss_count);
         println!("predicted cycle count: {}", cycle_num);
-        println!("predicted execution time: {:.2}s", cycle_time);
+        println!("predicted execution time: {:.2}s", predicted_time);
 
         println!(
             "executed instruction count: {}\nelapsed time: {:?}\n{:.2} MIPS",

@@ -1,4 +1,4 @@
-use crate::cache::LINE_SIZE;
+use crate::pseudo_lru_cache::LINE_SIZE;
 use crate::types::*;
 use crate::utils::*;
 pub const MEMORY_SIZE: usize = 128 * 1024 * 1024;
