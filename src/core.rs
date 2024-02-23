@@ -29,6 +29,7 @@ const FLOAT_REGISTER_SIZE: usize = 64;
 const CACHE_MISS_STALL: usize = 60;
 const CACHE_HIT_STALL: usize = 1;
 const FLUSH_STALL: usize = 3;
+#[allow(dead_code)]
 const FREQUENCY: usize = 65 * 1000000;
 #[allow(dead_code)]
 const BAUD_RATE: usize = 11520;
@@ -571,9 +572,9 @@ impl Core {
             + self.cache_miss_count as u128 * CACHE_MISS_STALL as u128
             + self.cache_hit_count as u128 * CACHE_HIT_STALL as u128
             + self.fpu_stall_counter as u128;
-        let predicted_time =
-            cycle_num as f64 / FREQUENCY as f64 + self.output.len() as f64 * 8. / BAUD_RATE as f64;
-        // let predicted_time = cycle_num as f64 / FREQUENCY as f64;
+        let predicted_time = cycle_num as f64 * 1.59512149e-08
+            + self.output.len() as f64 * 2.72652771e-05
+            + 121.06771803862078;
 
         println!("flush count: {}", self.flush_counter);
         println!("cache miss count: {}", self.cache_miss_count);

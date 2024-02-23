@@ -459,7 +459,6 @@ fn atan_sub(x: FloatingPoint) -> FloatingPoint {
 
 #[allow(dead_code)]
 fn atan(x: FloatingPoint, inv_map: &InvMap) -> FloatingPoint {
-    // let pi = FloatingPoint::new_f32(std::f32::consts::PI);
     let pi = FloatingPoint::new_f32(f32::from_bits(0x40490fdb));
     if x < FloatingPoint::new_f32(0.) {
         -atan_sub(-x)
