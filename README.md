@@ -1,18 +1,36 @@
 # Instruction-level simulator for for CPUEX-Group2 computer
 
-## コンパイラ係向け
-実行環境は WSL2 を推奨します。  
-まず、アセンブラが出力した `minrt.bin` をこの `README.md` と同じディレクトリに置きます。
-また `make` および `cargo` がインストールされていることを確認してください。その状態で
-```sh
-$ make run
 ```
-を実行すると、シミュレータが起動し、実行を開始します。`Makefile` を見ると何となくわかると思いますが、`make run` では `minrt.bin` に対して `./sld/contest.sld` を入力として与えて実行するようになっています。
-シミュレータの実行中、 `minrt.ppm` (この `README.md` と同じディレクトリ)に画像が出力されていきます。またプログレスバーで実行の進捗が表示されます(現在までの出力の合計バイト数の、256x256 で最終的に出力されるべき合計バイト数に対する割合に基づいています)。
+Simulator for CPUEX-Group2 computer
 
-![progress bar](./screenshots/progress_bar.png)
+Usage: instruction-simulator [OPTIONS]
 
-面談ではシミュレータの実行終了後に `minrt.ppm` を見せればいいと思います。なお実行終了時にいくつかの統計情報のようなものが表示されますが、これは面談では関係ないと思います。
+Options:
+  -b, --bin <BIN>
+          Name of the input binary file [default: main.bin]
+  -s, --sld <SLD>
+          Name of sld file for raytracing [default: ./sld/contest.sld]
+      --ppm <PPM>
+          Name of the output ppm file. By default, the simulator will output a ppm file with the same name as the input binary file
+  -n, --no-cache
+          No cache mode. If this flag is set, the simulator won't use cache
+  -i, --inst-stats
+          Take instruction statistics
+      --pc-stats
+          Take program-counter statistics
+      --show-output
+          Show output
+  -p, --progress-bar-size <PROGRESS_BAR_SIZE>
+          Show progress bar. If this flag is set with a value, the simulator will show progress bar. The value of this flag is the total size of output ppm file [default: 0]
+      --prof <PROF>
+          Profiling mode. If this flag is set with a file name, the simulator will output framegraph with the given file name
+      --label-map <LABEL_MAP>
+          Label map file. If this flag is set with a file name, the simulator will use the given file as label map, and output pc graph
+  -h, --help
+          Print help
+  -V, --version
+          Print version
+```
 
 ## 詳細
 Rust により実装した、2班の命令レベルのシミュレータです。
