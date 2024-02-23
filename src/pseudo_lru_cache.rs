@@ -19,7 +19,6 @@ pub struct CacheLine {
 
 pub struct PseudoLRUCache {
     values: [[CacheLine; WAY_NUM]; LINE_NUM],
-    // way_num: usize,
     tag_bit_num: usize,
     index_bit_num: usize,
     offset_bit_num: usize,
@@ -229,9 +228,6 @@ impl PseudoLRUCache {
                 if !cache_line.valid {
                     return CacheAccess::Miss;
                 }
-                // for i in 0..4 {
-                //     cache_line.value[offset + i] = ((value >> (i * 8)) & 0xff) as UByte;
-                // }
                 cache_line.value[offset >> 2] = value;
 
                 Self::update_on_set(cache_line);
